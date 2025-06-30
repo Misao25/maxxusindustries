@@ -1,0 +1,12 @@
+{
+  "name": "puppeteer-report-export",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.0.0",
+    "puppeteer": "^24.11.1"
+  }
+}
