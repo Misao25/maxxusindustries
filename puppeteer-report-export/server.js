@@ -42,7 +42,12 @@ app.get('/generate-report', async (req, res) => {
 
         for (const cat of categories) {
             await page.goto('https://dashboard.ecomdash.com/Reporting');
-            await page.waitForSelector(`div#mostPopular-${cat}`);
+            const reportExists = await page.$(`div#mostPopular-${cat}`);
+            if (!reportExists) {
+                console.log(`⚠️ Skipping ${cat}, no report section found`);
+                downloadLinks.push(`SKIPPED: ${cat}`);
+                continue;
+            }
             await page.click(`div#mostPopular-${cat} div.buttonDiv a.albany-btn.albany-btn--primary`);
 
             // Check before wait
