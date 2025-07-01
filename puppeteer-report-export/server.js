@@ -1,4 +1,4 @@
-// server.js (supports batch XLSX downloads for 'generate all')
+// server.js (handle reports with or without form#GenerateReport)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -41,54 +41,63 @@ app.get('/generate-report', async (req, res) => {
         const downloadLinks = [];
 
         for (const cat of categories) {
-        await page.goto('https://dashboard.ecomdash.com/Reporting');
-        await page.waitForSelector(`div#mostPopular-${cat}`);
-        await page.click(`div#mostPopular-${cat} div.buttonDiv a.albany-btn.albany-btn--primary`);
-        await page.waitForSelector('form#GenerateReport', { visible: true });
+            await page.goto('https://dashboard.ecomdash.com/Reporting');
+            await page.waitForSelector(`div#mostPopular-${cat}`);
+            await page.click(`div#mostPopular-${cat} div.buttonDiv a.albany-btn.albany-btn--primary`);
 
-        await page.click('#ReportStartDate', { clickCount: 3 });
-        await page.keyboard.press('Backspace');
-        await page.type('#ReportStartDate', from);
-        await page.$eval('#ReportStartDate', el => el.blur());
+            // Check before wait
+            const formExists = await page.$('form#GenerateReport');
+            if (!formExists) {
+                console.log(`⚠️ Skipping ${cat}, no GenerateReport form found`);
+                downloadLinks.push(`SKIPPED: ${cat}`);
+                continue;
+            }
 
-        await page.click('#ReportEndDate', { clickCount: 3 });
-        await page.keyboard.press('Backspace');
-        await page.type('#ReportEndDate', to);
-        await page.$eval('#ReportEndDate', el => el.blur());
+            await page.waitForSelector('form#GenerateReport', { visible: true });
 
-        await Promise.all([
-            page.waitForNavigation({ waitUntil: 'networkidle2' }),
-            page.click('a#GenerateDateRestrictionReport')
-        ]);
+            await page.click('#ReportStartDate', { clickCount: 3 });
+            await page.keyboard.press('Backspace');
+            await page.type('#ReportStartDate', from);
+            await page.$eval('#ReportStartDate', el => el.blur());
 
-        await page.waitForSelector('table');
-        const timestampStr = await page.$eval('table tbody tr td:nth-child(1)', el => el.textContent.trim());
+            await page.click('#ReportEndDate', { clickCount: 3 });
+            await page.keyboard.press('Backspace');
+            await page.type('#ReportEndDate', to);
+            await page.$eval('#ReportEndDate', el => el.blur());
 
-        let downloadUrl = null;
-        const historyUrl = 'https://dashboard.ecomdash.com/Support/ReportingHistory';
+            await Promise.all([
+                page.waitForNavigation({ waitUntil: 'networkidle2' }),
+                page.click('a#GenerateDateRestrictionReport')
+            ]);
 
-        for (let i = 0; i < 30; i++) {
-            await page.goto(historyUrl, { waitUntil: 'networkidle2' });
             await page.waitForSelector('table');
-            const rows = await page.$$('table tbody tr');
+            const timestampStr = await page.$eval('table tbody tr td:nth-child(1)', el => el.textContent.trim());
 
-            for (const row of rows) {
-                const rowTimestamp = await row.$eval('td:nth-child(1)', el => el.textContent.trim());
-                const status = await row.$eval('td:nth-child(4)', el => el.textContent.trim());
+            let downloadUrl = null;
+            const historyUrl = 'https://dashboard.ecomdash.com/Support/ReportingHistory';
 
-                if (rowTimestamp === timestampStr && status === 'Complete') {
-                    const linkEl = await row.$('td:nth-child(5) a[href$=".xlsx"]');
-                    if (linkEl) {
-                        downloadUrl = await linkEl.evaluate(a => a.href);
-                        break;
+            for (let i = 0; i < 30; i++) {
+                await page.goto(historyUrl, { waitUntil: 'networkidle2' });
+                await page.waitForSelector('table');
+                const rows = await page.$$('table tbody tr');
+
+                for (const row of rows) {
+                    const rowTimestamp = await row.$eval('td:nth-child(1)', el => el.textContent.trim());
+                    const status = await row.$eval('td:nth-child(4)', el => el.textContent.trim());
+
+                    if (rowTimestamp === timestampStr && status === 'Complete') {
+                        const linkEl = await row.$('td:nth-child(5) a[href$=".xlsx"]');
+                        if (linkEl) {
+                            downloadUrl = await linkEl.evaluate(a => a.href);
+                            break;
+                        }
                     }
                 }
+                if (downloadUrl) break;
+                await new Promise(resolve => setTimeout(resolve, 3000));
             }
-            if (downloadUrl) break;
-            await new Promise(resolve => setTimeout(resolve, 3000));
-        }
 
-        if (downloadUrl) downloadLinks.push(downloadUrl);
+            if (downloadUrl) downloadLinks.push(downloadUrl);
         }
 
         await browser.close();
