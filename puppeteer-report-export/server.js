@@ -80,7 +80,7 @@ app.get('/generate-report', async (req, res) => {
                 }
             }
             if (downloadUrl) break;
-            await page.waitForTimeout(3000);
+            await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
         if (!downloadUrl) throw new Error('Report not found');
