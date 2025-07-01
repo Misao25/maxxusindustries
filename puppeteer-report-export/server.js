@@ -1,15 +1,17 @@
-// server.js (stream XLSX file directly to user)
+// server.js (supports batch XLSX downloads for 'generate all')
 
 const express = require('express');
 const puppeteer = require('puppeteer');
 const https = require('https');
+const archiver = require('archiver');
+const stream = require('stream');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.get('/generate-report', async (req, res) => {
-    const { from, to } = req.query;
+    const { from, to, all } = req.query;
     if (!from || !to) return res.status(400).send('Missing from or to date');
 
     const browser = await puppeteer.launch({
@@ -20,7 +22,6 @@ app.get('/generate-report', async (req, res) => {
     await page.setViewport({ width: 1280, height: 800 });
 
     try {
-        // Login
         await page.goto('https://app.ecomdash.com/?returnUrl=%2fReporting');
         await page.type('input#UserName', process.env.LOGIN_EMAIL);
         await page.click('input#submit');
@@ -29,9 +30,20 @@ app.get('/generate-report', async (req, res) => {
         await page.click('input#submit');
         await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
-        // Generate report
-        await page.waitForSelector('div#mostPopular-SalesWithinDateRange_Category');
-        await page.click('div#mostPopular-SalesWithinDateRange_Category div.buttonDiv a.albany-btn.albany-btn--primary');
+        const categories = all === 'true'
+        ? [
+            'SalesWithinDateRange_Category',
+            'SalesSummary_Category',
+            'InventoryValue_Category'
+            ]
+        : ['SalesWithinDateRange_Category'];
+
+        const downloadLinks = [];
+
+        for (const cat of categories) {
+        await page.goto('https://dashboard.ecomdash.com/Reporting');
+        await page.waitForSelector(`div#mostPopular-${cat}`);
+        await page.click(`div#mostPopular-${cat} div.buttonDiv a.albany-btn.albany-btn--primary`);
         await page.waitForSelector('form#GenerateReport', { visible: true });
 
         await page.click('#ReportStartDate', { clickCount: 3 });
@@ -44,57 +56,67 @@ app.get('/generate-report', async (req, res) => {
         await page.type('#ReportEndDate', to);
         await page.$eval('#ReportEndDate', el => el.blur());
 
-        // Submit and wait for redirect
         await Promise.all([
-        page.waitForNavigation({ waitUntil: 'networkidle2' }),
-        page.click('a#GenerateDateRestrictionReport')
+            page.waitForNavigation({ waitUntil: 'networkidle2' }),
+            page.click('a#GenerateDateRestrictionReport')
         ]);
 
-        // Capture timestamp
         await page.waitForSelector('table');
         const timestampStr = await page.$eval('table tbody tr td:nth-child(1)', el => el.textContent.trim());
-        console.log('⏳ Will match timestamp:', timestampStr);
 
-        // Poll for match
-        const historyUrl = 'https://dashboard.ecomdash.com/Support/ReportingHistory';
         let downloadUrl = null;
+        const historyUrl = 'https://dashboard.ecomdash.com/Support/ReportingHistory';
 
         for (let i = 0; i < 30; i++) {
-        await page.goto(historyUrl, { waitUntil: 'networkidle2' });
-        await page.waitForSelector('table');
+            await page.goto(historyUrl, { waitUntil: 'networkidle2' });
+            await page.waitForSelector('table');
+            const rows = await page.$$('table tbody tr');
 
-        const rows = await page.$$('table tbody tr');
+            for (const row of rows) {
+                const rowTimestamp = await row.$eval('td:nth-child(1)', el => el.textContent.trim());
+                const status = await row.$eval('td:nth-child(4)', el => el.textContent.trim());
 
-        for (const row of rows) {
-            const rowTimestamp = await row.$eval('td:nth-child(1)', el => el.textContent.trim());
-            const status = await row.$eval('td:nth-child(4)', el => el.textContent.trim());
-
-            if (rowTimestamp === timestampStr && status === 'Complete') {
-            const linkEl = await row.$('td:nth-child(5) a[href$=".xlsx"]');
-            if (linkEl) {
-                downloadUrl = await linkEl.evaluate(a => a.href);
-                break;
+                if (rowTimestamp === timestampStr && status === 'Complete') {
+                    const linkEl = await row.$('td:nth-child(5) a[href$=".xlsx"]');
+                    if (linkEl) {
+                        downloadUrl = await linkEl.evaluate(a => a.href);
+                        break;
+                    }
+                }
             }
-            }
-        }
-        if (downloadUrl) break;
-        await new Promise(resolve => setTimeout(resolve, 3000));
+            if (downloadUrl) break;
+            await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
-        if (!downloadUrl) throw new Error('Report not found');
-
-        const fileName = downloadUrl.split('/').pop();
-        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-
-        https.get(downloadUrl, fileRes => fileRes.pipe(res)).on('error', err => {
-        console.error('Error downloading file:', err);
-        res.status(500).send('Download failed');
-        });
+        if (downloadUrl) downloadLinks.push(downloadUrl);
+        }
 
         await browser.close();
-    }
-    catch (err) {
+
+        if (all === 'true') {
+        res.setHeader('Content-Disposition', 'attachment; filename="all-reports.zip"');
+        res.setHeader('Content-Type', 'application/zip');
+
+        const archive = archiver('zip');
+        archive.pipe(res);
+
+        for (const url of downloadLinks) {
+            const fileName = url.split('/').pop();
+            archive.append(https.get(url, stream.PassThrough()), { name: fileName });
+        }
+
+        archive.finalize();
+        } else {
+            const fileUrl = downloadLinks[0];
+            const fileName = fileUrl.split('/').pop();
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            https.get(fileUrl, fileRes => fileRes.pipe(res)).on('error', err => {
+                console.error('Error downloading file:', err);
+                res.status(500).send('Download failed');
+            });
+        }
+    } catch (err) {
         console.error(err);
         await browser.close();
         res.status(500).send('Error generating report: ' + err.message);
