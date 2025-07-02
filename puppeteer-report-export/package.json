@@ -9,6 +9,7 @@
     "archiver": "^7.0.1",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
+    "googleapis": "^150.0.1",
     "puppeteer": "^24.11.1",
     "xlsx": "^0.18.5"
   },
