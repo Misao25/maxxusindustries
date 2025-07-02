@@ -26,7 +26,7 @@ app.get('/generate-report', async (req, res) => {
     const { from, to } = req.query;
     if (!from || !to) return res.status(400).send('Missing from or to date');
 
-    const browser = await puppeteer.launch({ headless: false, args: ['--no-sandbox'] });
+    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
 
