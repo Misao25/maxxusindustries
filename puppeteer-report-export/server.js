@@ -1,4 +1,4 @@
-// server.js (Format data with correct headers)
+// server.js (Apply header styling and freeze panel)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -103,13 +103,7 @@ app.get('/generate-report', async (req, res) => {
         let rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
 
         // Clean and format data
-        rows = rows.slice(1).map(r => r.slice(2)); // remove first row and first 2 columns
-        const header = [
-        'SKU #', 'UPC', 'Product Name', 'Quantity On Hand',
-        'Quantity Sold In Selected Time', 'Sales Volume', 'Warehouse',
-        'Supplier', 'Total Cost'
-        ];
-        rows.unshift(header);
+        rows = rows.map(r => r.slice(2)); // remove first 2 columns
 
         // Pick sheet tab name
         const diffDays = (new Date(to) - new Date(from)) / (1000 * 60 * 60 * 24);
@@ -128,6 +122,41 @@ app.get('/generate-report', async (req, res) => {
             valueInputOption: 'RAW',
             requestBody: { values: rows }
         });
+
+        // Apply header styling and freeze
+        const requests = [
+            {
+                updateSheetProperties: {
+                properties: {
+                    sheetId: 0,
+                    gridProperties: { frozenRowCount: 1 },
+                    title: tab
+                },
+                fields: 'gridProperties.frozenRowCount,title'
+                }
+            },
+            {
+                repeatCell: {
+                range: {
+                    sheetId: 0,
+                    startRowIndex: 0,
+                    endRowIndex: 1
+                },
+                cell: {
+                    userEnteredFormat: {
+                    backgroundColor: { red: 0.466, green: 0.737, blue: 0.121 },
+                    textFormat: {
+                        fontSize: 11,
+                        fontFamily: 'Tahoma',
+                        foregroundColor: { red: 1, green: 1, blue: 1 },
+                        bold: true
+                    }
+                    }
+                },
+                fields: 'userEnteredFormat(backgroundColor,textFormat,fontFamily)'
+                }
+            }
+        ];
 
         await browser.close();
         res.send(`✅ Report pushed to tab: ${tab}`);
