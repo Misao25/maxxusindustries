@@ -1,4 +1,4 @@
-// server.js (Apply header styling and freeze A1:I1)
+// server.js (Removed the tab rename request)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -129,8 +129,7 @@ app.get('/generate-report', async (req, res) => {
             updateSheetProperties: {
             properties: {
                 sheetId: 0,
-                gridProperties: { frozenRowCount: 1 },
-                title: tab
+                gridProperties: { frozenRowCount: 1 }
             },
             fields: 'gridProperties.frozenRowCount,title'
             }
