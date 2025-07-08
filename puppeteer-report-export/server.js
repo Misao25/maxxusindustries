@@ -149,13 +149,12 @@ app.get('/generate-report', async (req, res) => {
                 backgroundColor: { red: 0.466, green: 0.737, blue: 0.121 },
                 textFormat: {
                     fontSize: 11,
-                    fontFamily: 'Tahoma',
                     foregroundColor: { red: 1, green: 1, blue: 1 },
                     bold: true
                 }
                 }
             },
-            fields: 'userEnteredFormat(backgroundColor,textFormat,fontFamily)'
+            fields: 'userEnteredFormat(backgroundColor,textFormat)'
             }
         }
         ];
