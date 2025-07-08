@@ -1,4 +1,4 @@
-// server.js (Removed the tab rename request)
+// server.js (Skip sheet rename)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -131,7 +131,7 @@ app.get('/generate-report', async (req, res) => {
                 sheetId: 0,
                 gridProperties: { frozenRowCount: 1 }
             },
-            fields: 'gridProperties.frozenRowCount,title'
+            fields: 'gridProperties.frozenRowCount'
             }
         },
         {
