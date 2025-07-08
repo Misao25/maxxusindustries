@@ -1,4 +1,4 @@
-// server.js (dynamically detects the correct sheetId)
+// server.js (remove formatting)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -121,49 +121,6 @@ app.get('/generate-report', async (req, res) => {
             range: `${tab}!A1`,
             valueInputOption: 'RAW',
             requestBody: { values: rows }
-        });
-        
-        // Get actual sheetId for tab
-        const sheetId = await getSheetIdByTitle(SHEET_ID, tab);
-
-        // Apply header styling and freeze A1:I1
-        const requests = [
-        {
-            updateSheetProperties: {
-            properties: {
-                sheetId,
-                gridProperties: { frozenRowCount: 1 }
-            },
-            fields: 'gridProperties.frozenRowCount'
-            }
-        },
-        {
-            repeatCell: {
-            range: {
-                sheetId,
-                startRowIndex: 0,
-                endRowIndex: 1,
-                startColumnIndex: 0,
-                endColumnIndex: 9
-            },
-            cell: {
-                userEnteredFormat: {
-                backgroundColor: { red: 0.466, green: 0.737, blue: 0.121 },
-                textFormat: {
-                    fontSize: 11,
-                    foregroundColor: { red: 1, green: 1, blue: 1 },
-                    bold: true
-                }
-                }
-            },
-            fields: 'userEnteredFormat(backgroundColor,textFormat)'
-            }
-        }
-        ];
-
-        await sheets.spreadsheets.batchUpdate({
-            spreadsheetId: SHEET_ID,
-            requestBody: { requests }
         });
 
         await browser.close();
