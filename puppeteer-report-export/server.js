@@ -100,7 +100,7 @@ app.get('/generate-report', async (req, res) => {
         // Parse XLSX
         const workbook = xlsx.read(buffer, { type: 'buffer' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
+        let rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
 
         // Clean and format data
         rows = rows.slice(1).map(r => r.slice(2)); // remove first row and first 2 columns
