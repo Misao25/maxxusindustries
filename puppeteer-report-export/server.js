@@ -1,4 +1,4 @@
-// server.js (Skip sheet rename)
+// server.js (dynamically detects the correct sheetId)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -122,13 +122,16 @@ app.get('/generate-report', async (req, res) => {
             valueInputOption: 'RAW',
             requestBody: { values: rows }
         });
+        
+        // Get actual sheetId for tab
+        const sheetId = await getSheetIdByTitle(SHEET_ID, tab);
 
         // Apply header styling and freeze A1:I1
         const requests = [
         {
             updateSheetProperties: {
             properties: {
-                sheetId: 0,
+                sheetId,
                 gridProperties: { frozenRowCount: 1 }
             },
             fields: 'gridProperties.frozenRowCount'
@@ -137,7 +140,7 @@ app.get('/generate-report', async (req, res) => {
         {
             repeatCell: {
             range: {
-                sheetId: 0,
+                sheetId,
                 startRowIndex: 0,
                 endRowIndex: 1,
                 startColumnIndex: 0,
