@@ -1,4 +1,4 @@
-// server.js (Apply header styling and freeze panel)
+// server.js (Apply header styling and freeze A1:I1)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -103,7 +103,7 @@ app.get('/generate-report', async (req, res) => {
         let rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
 
         // Clean and format data
-        rows = rows.map(r => r.slice(2)); // remove first 2 columns
+        rows = rows.slice(1).map(r => r.slice(2)); // remove first row and first 2 columns
 
         // Pick sheet tab name
         const diffDays = (new Date(to) - new Date(from)) / (1000 * 60 * 60 * 24);
@@ -123,40 +123,47 @@ app.get('/generate-report', async (req, res) => {
             requestBody: { values: rows }
         });
 
-        // Apply header styling and freeze
+        // Apply header styling and freeze A1:I1
         const requests = [
-            {
-                updateSheetProperties: {
-                properties: {
-                    sheetId: 0,
-                    gridProperties: { frozenRowCount: 1 },
-                    title: tab
-                },
-                fields: 'gridProperties.frozenRowCount,title'
+        {
+            updateSheetProperties: {
+            properties: {
+                sheetId: 0,
+                gridProperties: { frozenRowCount: 1 },
+                title: tab
+            },
+            fields: 'gridProperties.frozenRowCount,title'
+            }
+        },
+        {
+            repeatCell: {
+            range: {
+                sheetId: 0,
+                startRowIndex: 0,
+                endRowIndex: 1,
+                startColumnIndex: 0,
+                endColumnIndex: 9
+            },
+            cell: {
+                userEnteredFormat: {
+                backgroundColor: { red: 0.466, green: 0.737, blue: 0.121 },
+                textFormat: {
+                    fontSize: 11,
+                    fontFamily: 'Tahoma',
+                    foregroundColor: { red: 1, green: 1, blue: 1 },
+                    bold: true
+                }
                 }
             },
-            {
-                repeatCell: {
-                range: {
-                    sheetId: 0,
-                    startRowIndex: 0,
-                    endRowIndex: 1
-                },
-                cell: {
-                    userEnteredFormat: {
-                    backgroundColor: { red: 0.466, green: 0.737, blue: 0.121 },
-                    textFormat: {
-                        fontSize: 11,
-                        fontFamily: 'Tahoma',
-                        foregroundColor: { red: 1, green: 1, blue: 1 },
-                        bold: true
-                    }
-                    }
-                },
-                fields: 'userEnteredFormat(backgroundColor,textFormat,fontFamily)'
-                }
+            fields: 'userEnteredFormat(backgroundColor,textFormat,fontFamily)'
             }
+        }
         ];
+
+        await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: SHEET_ID,
+            requestBody: { requests }
+        });
 
         await browser.close();
         res.send(`✅ Report pushed to tab: ${tab}`);
