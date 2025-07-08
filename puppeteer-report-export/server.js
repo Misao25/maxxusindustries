@@ -1,4 +1,4 @@
-// server.js (Updated to push XLSX to Google Sheets)
+// server.js (Format data with correct headers)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -101,6 +101,15 @@ app.get('/generate-report', async (req, res) => {
         const workbook = xlsx.read(buffer, { type: 'buffer' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
+
+        // Clean and format data
+        rows = rows.slice(1).map(r => r.slice(2)); // remove first row and first 2 columns
+        const header = [
+        'SKU #', 'UPC', 'Product Name', 'Quantity On Hand',
+        'Quantity Sold In Selected Time', 'Sales Volume', 'Warehouse',
+        'Supplier', 'Total Cost'
+        ];
+        rows.unshift(header);
 
         // Pick sheet tab name
         const diffDays = (new Date(to) - new Date(from)) / (1000 * 60 * 60 * 24);
