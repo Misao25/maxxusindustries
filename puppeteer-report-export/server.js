@@ -119,7 +119,7 @@ app.get('/generate-report', async (req, res) => {
 
         // Format specified date columns
         rows = rows.map(row => {
-            const cols = [5, 6, 41, 42];
+            const cols = [5, 6, 41];
             cols.forEach(i => {
                 if (row[i]) row[i] = excelDateToJS(row[i]);
             });
