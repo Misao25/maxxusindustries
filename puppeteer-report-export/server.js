@@ -1,4 +1,4 @@
-// server.js (Clean line breaks in Order Notes)
+// server.js (Exclude column AQ)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -118,7 +118,7 @@ app.get('/generate-report', async (req, res) => {
         };
 
         // Format specified date columns & cells
-        const dateCols = [5, 6, 41, 42];
+        const dateCols = [5, 6, 41];
         const fixedDateCells = [{ row: 0, col: 23 }, { row: 1449, col: 23 }];
 
         rows = rows.map((row, index) => {
