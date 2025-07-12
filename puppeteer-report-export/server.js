@@ -117,13 +117,24 @@ app.get('/generate-report', async (req, res) => {
             });
         };
 
-        // Format specified date columns
-        rows = rows.map(row => {
-            const cols = [5, 6, 41];
-            cols.forEach(i => {
-                if (row[i]) row[i] = excelDateToJS(row[i]);
-            });
+        // Format specified date columns & cells
+        const dateCols = [5, 6, 41, 42];
+        const fixedDateCells = [{ row: 0, col: 23 }, { row: 1449, col: 23 }];
+
+        rows = rows.map((row, index) => {
+            if (index >= 2) {
+                dateCols.forEach(i => {
+                    if (row[i]) row[i] = excelDateToJS(row[i]);
+                });
+            }
             return row;
+        });
+
+        // Format fixed cells separately
+        fixedDateCells.forEach(({ row, col }) => {
+            if (rows[row] && rows[row][col]) {
+                rows[row][col] = excelDateToJS(rows[row][col]);
+            }
         });
 
         // Pick sheet tab name
