@@ -1,4 +1,4 @@
-// server.js (Exclude column AQ)
+// server.js (Remove multiple sheet option)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -142,20 +142,13 @@ app.get('/generate-report', async (req, res) => {
             }
         });
 
-        // Pick sheet tab name
-        const diffDays = (new Date(to) - new Date(from)) / (1000 * 60 * 60 * 24);
-        let tab = 'Last7Days';
-        if (diffDays > 85) tab = 'Last90Days';
-        else if (diffDays > 55) tab = 'Last60Days';
-        else if (diffDays > 25) tab = 'Last30Days';
-
         // Clear old sheet content
-        await sheets.spreadsheets.values.clear({ spreadsheetId: SHEET_ID, range: `${tab}!A:Z` });
+        await sheets.spreadsheets.values.clear({ spreadsheetId: SHEET_ID, range: `SalesData!A:Z` });
 
         // Write new data
         await sheets.spreadsheets.values.update({
             spreadsheetId: SHEET_ID,
-            range: `${tab}!A1`,
+            range: `SalesData!A1`,
             valueInputOption: 'RAW',
             requestBody: { values: rows }
         });
