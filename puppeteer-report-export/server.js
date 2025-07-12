@@ -1,4 +1,4 @@
-// server.js (Format specified date columns)
+// server.js (Clean line breaks in Order Notes)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -126,6 +126,11 @@ app.get('/generate-report', async (req, res) => {
                 dateCols.forEach(i => {
                     if (row[i]) row[i] = excelDateToJS(row[i]);
                 });
+
+                // Clean line breaks in Order Notes
+                if (row[36]) {
+                    row[36] = row[36].toString().replace(/[\r\n]+/g, ' ').trim();
+                }
             }
             return row;
         });
