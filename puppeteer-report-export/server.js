@@ -1,4 +1,4 @@
-// server.js (sales orders export)
+// server.js (Format specified date columns)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -102,8 +102,29 @@ app.get('/generate-report', async (req, res) => {
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         let rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
 
-        // Clean and format data
-        // rows = rows.slice(1).map(r => r.slice(2)); // remove first row and first 2 columns
+        const excelDateToJS = serial => {
+            if (!serial || isNaN(serial)) return '';
+            const utc_days = Math.floor(serial - 25569);
+            const utc_value = utc_days * 86400; 
+            const date_info = new Date(utc_value * 1000);
+            const fractionalDay = serial % 1;
+            const totalSeconds = Math.round(86400 * fractionalDay);
+            date_info.setSeconds(totalSeconds);
+            return date_info.toLocaleString('en-US', {
+                year: 'numeric', month: 'numeric', day: 'numeric',
+                hour: 'numeric', minute: 'numeric', second: 'numeric',
+                hour12: true
+            });
+        };
+
+        // Format specified date columns
+        rows = rows.map(row => {
+            const cols = [5, 6, 41, 42];
+            cols.forEach(i => {
+                if (row[i]) row[i] = excelDateToJS(row[i]);
+            });
+            return row;
+        });
 
         // Pick sheet tab name
         const diffDays = (new Date(to) - new Date(from)) / (1000 * 60 * 60 * 24);
