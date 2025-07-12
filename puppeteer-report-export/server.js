@@ -40,7 +40,7 @@ app.get('/generate-report', async (req, res) => {
         await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
         await page.waitForSelector('div#mostPopular-SalesOrdersReport');
-        await page.click('div#mostPopular-SalesWithinDateRange_Category div.buttonDiv a.albany-btn.albany-btn--primary');
+        await page.click('div#mostPopular-SalesOrdersReport div.buttonDiv a.albany-btn.albany-btn--primary');
         await page.waitForSelector('form#GenerateReport', { visible: true });
 
         await page.click('#ReportStartDate', { clickCount: 3 });
