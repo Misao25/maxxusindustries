@@ -1,4 +1,4 @@
-// server.js (remove formatting)
+// server.js (sales orders export)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -39,7 +39,7 @@ app.get('/generate-report', async (req, res) => {
         await page.click('input#submit');
         await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
-        await page.waitForSelector('div#mostPopular-SalesWithinDateRange_Category');
+        await page.waitForSelector('div#mostPopular-SalesOrdersReport');
         await page.click('div#mostPopular-SalesWithinDateRange_Category div.buttonDiv a.albany-btn.albany-btn--primary');
         await page.waitForSelector('form#GenerateReport', { visible: true });
 
@@ -103,7 +103,7 @@ app.get('/generate-report', async (req, res) => {
         let rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
 
         // Clean and format data
-        rows = rows.slice(1).map(r => r.slice(2)); // remove first row and first 2 columns
+        // rows = rows.slice(1).map(r => r.slice(2)); // remove first row and first 2 columns
 
         // Pick sheet tab name
         const diffDays = (new Date(to) - new Date(from)) / (1000 * 60 * 60 * 24);
