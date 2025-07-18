@@ -134,6 +134,13 @@ app.get('/generate-report', async (req, res) => {
             }
             return row;
         });
+        
+        // Sort rows by date in column F (index 5), latest first
+        rows = [rows[0], rows[1], ...rows.slice(2).sort((a, b) => {
+            const dateA = new Date(a[5]);
+            const dateB = new Date(b[5]);
+            return dateB - dateA; // Descending
+        })];
 
         // Format fixed cells separately
         fixedDateCells.forEach(({ row, col }) => {
