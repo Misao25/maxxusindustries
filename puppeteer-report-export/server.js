@@ -134,7 +134,7 @@ app.get('/generate-report', async (req, res) => {
             }
             return row;
         });
-        
+
         const formatDate = (dateObj) => {
             return dateObj.toLocaleString('en-US', {
                 year: 'numeric',
@@ -178,7 +178,7 @@ app.get('/generate-report', async (req, res) => {
         });
 
         await browser.close();
-        res.send(`✅ Report pushed to tab: ${tab}`);
+        res.send(`✅ Report pushed to tab: SalesData`);
     }
     catch (err) {
         console.error(err);
