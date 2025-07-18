@@ -1,4 +1,4 @@
-// server.js (Remove multiple sheet option)
+// server.js (Append mode - keeps previous data)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -146,6 +146,7 @@ app.get('/generate-report', async (req, res) => {
                 hour12: true
             });
         };
+
         // Sort rows by date in column F (index 5), latest first
         rows = [rows[0], rows[1], ...rows.slice(2)
             .map(row => {
@@ -166,19 +167,73 @@ app.get('/generate-report', async (req, res) => {
             }
         });
 
-        // Clear old sheet content
-        await sheets.spreadsheets.values.clear({ spreadsheetId: SHEET_ID, range: `SalesData!A:Z` });
+        // GET EXISTING DATA FROM SHEET
+        let existingData = [];
+        try {
+            const existingResponse = await sheets.spreadsheets.values.get({
+                spreadsheetId: SHEET_ID,
+                range: `masterfile!A:Z`
+            });
+            existingData = existingResponse.data.values || [];
+        } catch (error) {
+            console.log('No existing data found, starting fresh');
+        }
 
-        // Write new data
+        // MERGE DATA LOGIC
+        let finalData = [];
+        
+        if (existingData.length === 0) {
+            // No existing data, use all new data
+            finalData = rows;
+        } else {
+            // Keep existing headers (first 2 rows)
+            const headers = existingData.slice(0, 2);
+            const existingRows = existingData.slice(2);
+            const newRows = rows.slice(2);
+            
+            // Create a Set of existing order identifiers to avoid duplicates
+            // Assuming column A (index 0) contains unique order identifiers
+            const existingOrders = new Set(existingRows.map(row => row[0]));
+            
+            // Filter new rows to only include those not already in the sheet
+            const uniqueNewRows = newRows.filter(row => !existingOrders.has(row[0]));
+            
+            // Combine all data: headers + existing rows + new unique rows
+            const allDataRows = [...existingRows, ...uniqueNewRows];
+            
+            // Sort all data rows by date (column F, index 5)
+            const sortedDataRows = allDataRows
+                .map(row => {
+                    // Make a copy to avoid modifying original
+                    const newRow = [...row];
+                    newRow[5] = new Date(newRow[5]); // Parse to Date
+                    return newRow;
+                })
+                .sort((a, b) => b[5] - a[5]) // Descending (latest first)
+                .map(row => {
+                    row[5] = formatDate(row[5]); // Format back to string
+                    return row;
+                });
+            
+            finalData = [...headers, ...sortedDataRows];
+        }
+
+        // Clear and write all data
+        await sheets.spreadsheets.values.clear({ spreadsheetId: SHEET_ID, range: `masterfile!A:Z` });
         await sheets.spreadsheets.values.update({
             spreadsheetId: SHEET_ID,
-            range: `SalesData!A1`,
+            range: `masterfile!A1`,
             valueInputOption: 'RAW',
-            requestBody: { values: rows }
+            requestBody: { values: finalData }
         });
 
         await browser.close();
-        res.send(`✅ Report pushed to tab: SalesData`);
+        
+        const newRowCount = rows.length - 2; // Subtract header rows
+        const existingRowCount = existingData.length > 2 ? existingData.length - 2 : 0;
+        const uniqueNewRowCount = finalData.length - 2 - existingRowCount;
+        
+        res.send(`✅ Report updated! Added ${uniqueNewRowCount} new rows (${newRowCount} total in this batch). Master file now has ${finalData.length - 2} total data rows.`);
     }
     catch (err) {
         console.error(err);
