@@ -1,4 +1,4 @@
-// server.js (Enhanced with duplicate detection and smart merging)
+// server.js (Shift all ecomdash data to the right)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -31,14 +31,19 @@ const createRowKey = (row) => {
     return `${orderId}_${date}`;
 };
 
-// Helper function to add row numbers starting from row 3 (after headers)
-const addRowNumbers = (rows) => {
+// Helper function to add ID column at the beginning
+const addIdColumn = (rows) => {
     return rows.map((row, index) => {
-        if (index >= 2) { // Skip headers (rows 0 and 1)
-            // Add row number in column A
-            row[0] = index - 1; // Start numbering from 1 for first data row
+        if (index === 0) {
+            // Add "ID" header to first row
+            return ['ID', ...row];
+        } else if (index === 1) {
+            // Add empty cell or secondary header to second row
+            return ['', ...row];
+        } else {
+            // Add incremental ID starting from 1 for data rows
+            return [index - 1, ...row];
         }
-        return row;
     });
 };
 
@@ -178,9 +183,11 @@ app.get('/generate-report', async (req, res) => {
         const existingKeys = new Set();
         const existingDataRows = existingRows.slice(2); // Skip headers
 
-        // Build existing keys set (excluding row numbers in column A)
+        // Build existing keys set (now accounting for ID column shift)
         existingDataRows.forEach(row => {
-            const key = createRowKey(row);
+            // Skip the ID column (index 0) when creating keys
+            const rowWithoutId = row.slice(1);
+            const key = createRowKey(rowWithoutId);
             if (key && key !== '_') { // Avoid empty keys
                 existingKeys.add(key);
             }
@@ -210,10 +217,10 @@ app.get('/generate-report', async (req, res) => {
             });
         };
 
-        // Sort combined data by date in column F (index 5), latest first
+        // Sort combined data by date in column G (index 6, was 5 before ID column), latest first
         combinedDataRows = combinedDataRows
             .map(row => {
-                if (row[5]) {
+                if (row[5]) { // Column F is now index 5 (was column F/index 5, now column G/index 6 after ID)
                     row[5] = new Date(row[5]); // Parse to Date
                 }
                 return row;
@@ -233,15 +240,19 @@ app.get('/generate-report', async (req, res) => {
         // Reconstruct final rows with headers
         let finalRows = [];
         if (existingRows.length >= 2) {
-            // Use existing headers
-            finalRows = [existingRows[0], existingRows[1], ...combinedDataRows];
+            // Use existing headers (but remove ID column from existing data for merging)
+            const existingHeadersWithoutId = existingRows[0].slice(1);
+            const existingSecondRowWithoutId = existingRows[1].slice(1);
+            const existingDataWithoutId = existingDataRows.map(row => row.slice(1));
+            
+            finalRows = [existingHeadersWithoutId, existingSecondRowWithoutId, ...existingDataWithoutId, ...uniqueNewRows];
         } else {
             // Use new headers if no existing data
             finalRows = [newRows[0], newRows[1], ...combinedDataRows];
         }
 
-        // Add row numbers to column A (skip headers)
-        finalRows = addRowNumbers(finalRows);
+        // Add ID column to all rows (this shifts everything to the right)
+        finalRows = addIdColumn(finalRows);
 
         // Clear old sheet content
         await sheets.spreadsheets.values.clear({ 
@@ -265,7 +276,7 @@ app.get('/generate-report', async (req, res) => {
         res.send(`✅ Report updated successfully!
 📊 Total rows: ${totalRows}
 ➕ New rows added: ${addedRows}
-🔢 Rows numbered in column A
+🆔 ID column added (original data shifted right)
 📅 Sorted by date (latest to oldest)
 🔍 Duplicates removed`);
 
