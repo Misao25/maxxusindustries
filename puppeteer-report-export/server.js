@@ -1,4 +1,4 @@
-// server.js (Shift all ecomdash data to the right)
+// server.js (Check duplicates via column B)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -21,31 +21,6 @@ const auth = new google.auth.GoogleAuth({
 const sheets = google.sheets({ version: 'v4', auth });
 
 const SHEET_ID = '1mrw-AMbVWnz1Cp4ksjR0W0eTDz0cUiA-zjThrzcIRnY';
-
-// Helper function to create a unique key for duplicate detection
-const createRowKey = (row) => {
-    // Assuming columns for unique identification (adjust indices as needed)
-    // Using order ID (column B/index 1) and date (column F/index 5) as unique identifiers
-    const orderId = row[1] || '';
-    const date = row[5] || '';
-    return `${orderId}_${date}`;
-};
-
-// Helper function to add ID column at the beginning
-const addIdColumn = (rows) => {
-    return rows.map((row, index) => {
-        if (index === 0) {
-            // Add "ID" header to first row
-            return ['ID', ...row];
-        } else if (index === 1) {
-            // Add empty cell or secondary header to second row
-            return ['', ...row];
-        } else {
-            // Add incremental ID starting from 1 for data rows
-            return [index - 1, ...row];
-        }
-    });
-};
 
 app.get('/generate-report', async (req, res) => {
     const { from, to } = req.query;
@@ -99,11 +74,11 @@ app.get('/generate-report', async (req, res) => {
                 const status = await row.$eval('td:nth-child(4)', el => el.textContent.trim());
 
                 if (rowTimestamp === timestampStr && status === 'Complete') {
-                    const linkEl = await row.$('td:nth-child(5) a[href$=".xlsx"]');
-                    if (linkEl) {
-                        downloadUrl = await linkEl.evaluate(a => a.href);
-                        break;
-                    }
+                const linkEl = await row.$('td:nth-child(5) a[href$=".xlsx"]');
+                if (linkEl) {
+                    downloadUrl = await linkEl.evaluate(a => a.href);
+                    break;
+                }
                 }
             }
             if (downloadUrl) break;
@@ -125,7 +100,7 @@ app.get('/generate-report', async (req, res) => {
         // Parse XLSX
         const workbook = xlsx.read(buffer, { type: 'buffer' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        let newRows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
+        let rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
 
         const excelDateToJS = serial => {
             if (!serial || isNaN(serial)) return '';
@@ -146,7 +121,7 @@ app.get('/generate-report', async (req, res) => {
         const dateCols = [5, 6, 41];
         const fixedDateCells = [{ row: 0, col: 23 }, { row: 1449, col: 23 }];
 
-        newRows = newRows.map((row, index) => {
+        rows = rows.map((row, index) => {
             if (index >= 2) {
                 dateCols.forEach(i => {
                     if (row[i]) row[i] = excelDateToJS(row[i]);
@@ -160,51 +135,6 @@ app.get('/generate-report', async (req, res) => {
             return row;
         });
 
-        // Format fixed cells separately
-        fixedDateCells.forEach(({ row, col }) => {
-            if (newRows[row] && newRows[row][col]) {
-                newRows[row][col] = excelDateToJS(newRows[row][col]);
-            }
-        });
-
-        // Get existing data from Google Sheets
-        let existingRows = [];
-        try {
-            const existingData = await sheets.spreadsheets.values.get({
-                spreadsheetId: SHEET_ID,
-                range: 'SalesData!A:Z'
-            });
-            existingRows = existingData.data.values || [];
-        } catch (error) {
-            console.log('No existing data found or error reading sheet:', error.message);
-        }
-
-        // Create sets for duplicate detection
-        const existingKeys = new Set();
-        const existingDataRows = existingRows.slice(2); // Skip headers
-
-        // Build existing keys set (now accounting for ID column shift)
-        existingDataRows.forEach(row => {
-            // Skip the ID column (index 0) when creating keys
-            const rowWithoutId = row.slice(1);
-            const key = createRowKey(rowWithoutId);
-            if (key && key !== '_') { // Avoid empty keys
-                existingKeys.add(key);
-            }
-        });
-
-        // Filter new rows to exclude duplicates
-        const newDataRows = newRows.slice(2); // Skip headers
-        const uniqueNewRows = newDataRows.filter(row => {
-            const key = createRowKey(row);
-            return key && key !== '_' && !existingKeys.has(key);
-        });
-
-        console.log(`Found ${newDataRows.length} new rows, ${uniqueNewRows.length} are unique`);
-
-        // Combine existing data rows with new unique rows
-        let combinedDataRows = [...existingDataRows, ...uniqueNewRows];
-
         const formatDate = (dateObj) => {
             return dateObj.toLocaleString('en-US', {
                 year: 'numeric',
@@ -216,71 +146,67 @@ app.get('/generate-report', async (req, res) => {
                 hour12: true
             });
         };
-
-        // Sort combined data by date in column G (index 6, was 5 before ID column), latest first
-        combinedDataRows = combinedDataRows
+        // Sort rows by date in column G (index 6), latest first
+        rows = [rows[0], rows[1], ...rows.slice(2)
             .map(row => {
-                if (row[5]) { // Column F is now index 5 (was column F/index 5, now column G/index 6 after ID)
-                    row[5] = new Date(row[5]); // Parse to Date
-                }
+                row[6] = new Date(row[6]); // Parse to Date
                 return row;
             })
-            .sort((a, b) => {
-                const dateA = a[5] instanceof Date ? a[5] : new Date(0);
-                const dateB = b[5] instanceof Date ? b[5] : new Date(0);
-                return dateB - dateA; // Descending (latest first)
-            })
+            .sort((a, b) => b[6] - a[6]) // Descending
             .map(row => {
-                if (row[5] instanceof Date) {
-                    row[5] = formatDate(row[5]); // Format back to string
-                }
+                row[6] = formatDate(row[6]); // Format back to string
                 return row;
-            });
+            })
+        ];
 
-        // Reconstruct final rows with headers
-        let finalRows = [];
-        if (existingRows.length >= 2) {
-            // Use existing headers (but remove ID column from existing data for merging)
-            const existingHeadersWithoutId = existingRows[0].slice(1);
-            const existingSecondRowWithoutId = existingRows[1].slice(1);
-            const existingDataWithoutId = existingDataRows.map(row => row.slice(1));
-            
-            finalRows = [existingHeadersWithoutId, existingSecondRowWithoutId, ...existingDataWithoutId, ...uniqueNewRows];
-        } else {
-            // Use new headers if no existing data
-            finalRows = [newRows[0], newRows[1], ...combinedDataRows];
+        // Format fixed cells separately
+        fixedDateCells.forEach(({ row, col }) => {
+            if (rows[row] && rows[row][col]) {
+                rows[row][col] = excelDateToJS(rows[row][col]);
+            }
+        });
+
+        // Fetch existing data from Google Sheet (SalesData!A:B)
+        const existingSheet = await sheets.spreadsheets.values.get({
+            spreadsheetId: SHEET_ID,
+            range: 'SalesData!A:B',
+        });
+        const existingRows = existingSheet.data.values || [];
+        const existingBValues = new Set(existingRows.slice(2).map(r => r[1])); // Skip header rows
+        let nextId = existingRows.length > 2 ? parseInt(existingRows[existingRows.length - 1][0]) + 1 : 1;
+
+        // Prepare new rows
+        const newRows = [];
+        for (let i = 2; i < rows.length; i++) {
+            const row = rows[i];
+            const identifier = row[1]; // Column B value (after adding ID)
+            if (!existingBValues.has(identifier)) {
+                newRows.push([nextId++, ...row]);
+            }
         }
 
-        // Add ID column to all rows (this shifts everything to the right)
-        finalRows = addIdColumn(finalRows);
+        // If header is needed (only if sheet is empty)
+        if (existingRows.length === 0) {
+            rows[0] = ['Sales ID', ...rows[0]];
+            rows[1] = ['', ...rows[1]];
+            newRows.unshift(rows[0], rows[1]);
+        }
 
-        // Clear old sheet content
-        await sheets.spreadsheets.values.clear({ 
-            spreadsheetId: SHEET_ID, 
-            range: `SalesData!A:Z` 
-        });
-
-        // Write updated data
-        await sheets.spreadsheets.values.update({
-            spreadsheetId: SHEET_ID,
-            range: `SalesData!A1`,
-            valueInputOption: 'RAW',
-            requestBody: { values: finalRows }
-        });
+        // Append new rows (if any)
+        if (newRows.length > 0) {
+            await sheets.spreadsheets.values.append({
+                spreadsheetId: SHEET_ID,
+                range: 'SalesData!A1',
+                valueInputOption: 'RAW',
+                insertDataOption: 'INSERT_ROWS',
+                requestBody: { values: newRows },
+            });
+        }
 
         await browser.close();
-        
-        const totalRows = finalRows.length - 2; // Exclude headers
-        const addedRows = uniqueNewRows.length;
-        
-        res.send(`✅ Report updated successfully!
-📊 Total rows: ${totalRows}
-➕ New rows added: ${addedRows}
-🆔 ID column added (original data shifted right)
-📅 Sorted by date (latest to oldest)
-🔍 Duplicates removed`);
-
-    } catch (err) {
+        res.send(`✅ Added ${newRows.length - (existingRows.length === 0 ? 2 : 0)} new rows to SalesData`);
+    }
+    catch (err) {
         console.error(err);
         await browser.close();
         res.status(500).send('Error generating report: ' + err.message);
