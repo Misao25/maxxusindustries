@@ -1,4 +1,4 @@
-// server.js (excluding last data row)
+// server.js (skip rows with 'Date TypeCreate' in column A)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -173,10 +173,10 @@ app.get('/generate-report', async (req, res) => {
         });
         const existingIDs = new Set((existingData.data.values || []).flat().map(id => id?.toString().trim()));
 
-        // Prepare rows to append (excluding last data row)
-        const newRows = rows.slice(2, -1).filter(row => {
-            const ecomdashId = row[0]?.toString().trim();
-            return ecomdashId && !existingIDs.has(ecomdashId);
+        // Prepare rows to append (skip rows with 'Date TypeCreate' in column A)
+        const newRows = rows.slice(2).filter(row => {
+            const id = row[0]?.toString().trim();
+            return id && id !== 'Date TypeCreate' && !existingIDs.has(id);
         });
 
         // Add header if sheet is empty
