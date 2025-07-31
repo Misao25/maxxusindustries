@@ -1,4 +1,4 @@
-// server.js (Check duplicates via column B)
+// server.js (Remove sales ID logic)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -146,15 +146,15 @@ app.get('/generate-report', async (req, res) => {
                 hour12: true
             });
         };
-        // Sort rows by date in column G (index 6), latest first
+        // Sort rows by date in column F (index 5), latest first
         rows = [rows[0], rows[1], ...rows.slice(2)
             .map(row => {
-                row[6] = new Date(row[6]); // Parse to Date
+                row[5] = new Date(row[5]); // Parse to Date
                 return row;
             })
-            .sort((a, b) => b[6] - a[6]) // Descending
+            .sort((a, b) => b[5] - a[5]) // Descending
             .map(row => {
-                row[6] = formatDate(row[6]); // Format back to string
+                row[5] = formatDate(row[5]); // Format back to string
                 return row;
             })
         ];
@@ -166,33 +166,25 @@ app.get('/generate-report', async (req, res) => {
             }
         });
 
-        // Fetch existing data from Google Sheet (SalesData!A:B)
-        const existingSheet = await sheets.spreadsheets.values.get({
+        // Fetch existing Ecomdash IDs from column A
+        const existingData = await sheets.spreadsheets.values.get({
             spreadsheetId: SHEET_ID,
-            range: 'SalesData!A:B',
+            range: 'SalesData!A:A',
         });
-        const existingRows = existingSheet.data.values || [];
-        const existingBValues = new Set(existingRows.slice(2).map(r => r[1])); // Skip header rows
-        let nextId = existingRows.length > 2 ? parseInt(existingRows[existingRows.length - 1][0]) + 1 : 1;
+        const existingIDs = new Set((existingData.data.values || []).flat().map(id => id?.toString().trim()));
 
-        // Prepare new rows
-        const newRows = [];
-        for (let i = 2; i < rows.length; i++) {
-            const row = rows[i];
-            const identifier = row[1]; // Column B value (after adding ID)
-            if (!existingBValues.has(identifier)) {
-                newRows.push([nextId++, ...row]);
-            }
+        // Prepare rows to append
+        const newRows = rows.slice(2).filter(row => {
+            const ecomdashId = row[0]?.toString().trim();
+            return ecomdashId && !existingIDs.has(ecomdashId);
+        });
+
+        // Add header if sheet is empty
+        if ((existingData.data.values || []).length === 0) {
+            newRows.unshift(rows[0], rows[1]); // include headers
         }
 
-        // If header is needed (only if sheet is empty)
-        if (existingRows.length === 0) {
-            rows[0] = ['Sales ID', ...rows[0]];
-            rows[1] = ['', ...rows[1]];
-            newRows.unshift(rows[0], rows[1]);
-        }
-
-        // Append new rows (if any)
+        // Append new rows
         if (newRows.length > 0) {
             await sheets.spreadsheets.values.append({
                 spreadsheetId: SHEET_ID,
@@ -204,7 +196,7 @@ app.get('/generate-report', async (req, res) => {
         }
 
         await browser.close();
-        res.send(`✅ Added ${newRows.length - (existingRows.length === 0 ? 2 : 0)} new rows to SalesData`);
+        res.send(`✅ Added ${newRows.length - (existingData.data.values?.length === 0 ? 2 : 0)} new rows to SalesData`);
     }
     catch (err) {
         console.error(err);
