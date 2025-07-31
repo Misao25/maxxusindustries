@@ -1,4 +1,4 @@
-// server.js (Remove sales ID logic)
+// server.js (excluding last data row)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -173,8 +173,8 @@ app.get('/generate-report', async (req, res) => {
         });
         const existingIDs = new Set((existingData.data.values || []).flat().map(id => id?.toString().trim()));
 
-        // Prepare rows to append
-        const newRows = rows.slice(2).filter(row => {
+        // Prepare rows to append (excluding last data row)
+        const newRows = rows.slice(2, -1).filter(row => {
             const ecomdashId = row[0]?.toString().trim();
             return ecomdashId && !existingIDs.has(ecomdashId);
         });
