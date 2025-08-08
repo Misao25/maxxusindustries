@@ -1,4 +1,4 @@
-// server.js (raw data version - no formatting applied)
+// server.js (formatted data version - optimized for Google Sheets usability)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -97,31 +97,75 @@ app.get('/generate-report', async (req, res) => {
             });
         });
 
-        // Parse XLSX with raw values (no formatting)
-        const workbook = xlsx.read(buffer, { 
-            type: 'buffer',
-            raw: true,        // Keep raw values
-            cellDates: false, // Don't convert to JavaScript dates
-            cellNF: false,    // Don't apply number formatting
-            cellStyles: false // Don't read cell styles
-        });
+        // Parse XLSX
+        const workbook = xlsx.read(buffer, { type: 'buffer' });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        let rows = xlsx.utils.sheet_to_json(firstSheet, { 
-            header: 1,
-            raw: true,        // Preserve raw values
-            defval: ''        // Default value for empty cells
+        let rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
+
+        // Convert Excel serial dates to proper date format
+        const excelDateToJS = serial => {
+            if (!serial || isNaN(serial) || serial === 0) return null;
+            const utc_days = Math.floor(serial - 25569);
+            const utc_value = utc_days * 86400; 
+            const date_info = new Date(utc_value * 1000);
+            const fractionalDay = serial % 1;
+            const totalSeconds = Math.round(86400 * fractionalDay);
+            date_info.setSeconds(totalSeconds);
+            return date_info;
+        };
+
+        // Format date for Google Sheets (YYYY-MM-DD HH:MM:SS format for consistency)
+        const formatDateForSheets = (dateObj) => {
+            if (!dateObj || !(dateObj instanceof Date) || isNaN(dateObj)) return '';
+            
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            const hours = String(dateObj.getHours()).padStart(2, '0');
+            const minutes = String(dateObj.getMinutes()).padStart(2, '0');
+            const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+            
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+        };
+
+        // Process and format data
+        const dateCols = [5, 6, 41]; // Invoice Date, Payment Received Date, Completed Date
+        const fixedDateCells = [{ row: 0, col: 23 }, { row: 1449, col: 23 }];
+
+        rows = rows.map((row, index) => {
+            if (index >= 2) { // Skip header rows
+                // Format date columns
+                dateCols.forEach(colIndex => {
+                    if (row[colIndex]) {
+                        const dateObj = excelDateToJS(row[colIndex]);
+                        row[colIndex] = formatDateForSheets(dateObj);
+                    }
+                });
+
+                // Clean Order Notes (remove line breaks)
+                if (row[36]) {
+                    row[36] = row[36].toString().replace(/[\r\n]+/g, ' ').trim();
+                }
+            }
+            return row;
         });
 
-        // Sort rows by column F (index 5) value as-is, no date conversion
-        // Only sort data rows (skip headers)
+        // Format fixed date cells separately
+        fixedDateCells.forEach(({ row, col }) => {
+            if (rows[row] && rows[row][col]) {
+                const dateObj = excelDateToJS(rows[row][col]);
+                rows[row][col] = formatDateForSheets(dateObj);
+            }
+        });
+
+        // Sort rows by Invoice Date (column F, index 5) - latest first
         const headerRows = rows.slice(0, 2);
         const dataRows = rows.slice(2);
         
-        // Sort by column F values in descending order (assuming numeric/serial dates)
         dataRows.sort((a, b) => {
-            const valA = a[5] || 0;
-            const valB = b[5] || 0;
-            return valB - valA; // Descending order
+            const dateA = new Date(a[5] || '1900-01-01');
+            const dateB = new Date(b[5] || '1900-01-01');
+            return dateB - dateA; // Descending order (latest first)
         });
 
         // Reconstruct rows array
@@ -145,12 +189,12 @@ app.get('/generate-report', async (req, res) => {
             newRows.unshift(rows[0], rows[1]); // include headers
         }
 
-        // Append new rows to SalesMasterfile with USER_ENTERED to prevent auto-formatting
+        // Append new rows to SalesMasterfile
         if (newRows.length > 0) {
             await sheets.spreadsheets.values.append({
                 spreadsheetId: SHEET_ID,
                 range: 'SalesMasterfile!A1',
-                valueInputOption: 'RAW', // Use RAW to prevent Google Sheets formatting
+                valueInputOption: 'USER_ENTERED', // Allows Google Sheets to recognize date formats
                 insertDataOption: 'INSERT_ROWS',
                 requestBody: { values: newRows },
             });
