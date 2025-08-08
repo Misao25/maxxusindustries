@@ -104,28 +104,50 @@ app.get('/generate-report', async (req, res) => {
 
         // Convert Excel serial dates to proper date format
         const excelDateToJS = serial => {
-            if (!serial || isNaN(serial) || serial === 0) return null;
-            const utc_days = Math.floor(serial - 25569);
+            if (!serial || isNaN(serial) || serial === 0 || serial < 1) return null;
+            
+            // Handle Excel's 1900 date system bug (treats 1900 as leap year)
+            let adjustedSerial = serial;
+            if (serial >= 61) {
+                adjustedSerial = serial - 1;
+            }
+            
+            const utc_days = Math.floor(adjustedSerial - 25569);
             const utc_value = utc_days * 86400; 
             const date_info = new Date(utc_value * 1000);
-            const fractionalDay = serial % 1;
+            const fractionalDay = adjustedSerial % 1;
             const totalSeconds = Math.round(86400 * fractionalDay);
             date_info.setSeconds(totalSeconds);
+            
+            // Validate the resulting date (should be after 1900-01-01)
+            if (date_info.getFullYear() < 1900) return null;
+            
             return date_info;
         };
 
-        // Format date for Google Sheets (YYYY-MM-DD HH:MM:SS format for consistency)
+        // Format date for Google Sheets (YYYY/MM/DD HH:MM:SS AM/PM format)
         const formatDateForSheets = (dateObj) => {
             if (!dateObj || !(dateObj instanceof Date) || isNaN(dateObj)) return '';
+            
+            // Additional validation: reject dates before 1900 (likely Excel artifacts)
+            if (dateObj.getFullYear() < 1900) return '';
             
             const year = dateObj.getFullYear();
             const month = String(dateObj.getMonth() + 1).padStart(2, '0');
             const day = String(dateObj.getDate()).padStart(2, '0');
-            const hours = String(dateObj.getHours()).padStart(2, '0');
+            
+            // Format time with AM/PM
+            let hours = dateObj.getHours();
             const minutes = String(dateObj.getMinutes()).padStart(2, '0');
             const seconds = String(dateObj.getSeconds()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
             
-            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            // Convert to 12-hour format
+            hours = hours % 12;
+            hours = hours ? hours : 12; // 0 should be 12
+            const formattedHours = String(hours).padStart(2, '0');
+            
+            return `${year}/${month}/${day} ${formattedHours}:${minutes}:${seconds} ${ampm}`;
         };
 
         // Process and format data
@@ -136,9 +158,31 @@ app.get('/generate-report', async (req, res) => {
             if (index >= 2) { // Skip header rows
                 // Format date columns
                 dateCols.forEach(colIndex => {
-                    if (row[colIndex]) {
-                        const dateObj = excelDateToJS(row[colIndex]);
+                    if (row[colIndex] !== undefined && row[colIndex] !== null && row[colIndex] !== '') {
+                        // Check if it's already a formatted date string or an Excel serial number
+                        let dateObj;
+                        
+                        if (typeof row[colIndex] === 'string' && row[colIndex].includes('/')) {
+                            // Already formatted date string - parse it
+                            dateObj = new Date(row[colIndex]);
+                            
+                            // Check if it's the problematic 1899 date
+                            if (dateObj.getFullYear() === 1899) {
+                                row[colIndex] = ''; // Set to empty for null dates
+                                return;
+                            }
+                        } else if (typeof row[colIndex] === 'number') {
+                            // Excel serial number
+                            dateObj = excelDateToJS(row[colIndex]);
+                        } else {
+                            // Try to parse as date
+                            dateObj = new Date(row[colIndex]);
+                        }
+                        
+                        // Format the date
                         row[colIndex] = formatDateForSheets(dateObj);
+                    } else {
+                        row[colIndex] = ''; // Ensure empty cells are empty strings
                     }
                 });
 
@@ -153,19 +197,42 @@ app.get('/generate-report', async (req, res) => {
         // Format fixed date cells separately
         fixedDateCells.forEach(({ row, col }) => {
             if (rows[row] && rows[row][col]) {
-                const dateObj = excelDateToJS(rows[row][col]);
+                let dateObj;
+                
+                if (typeof rows[row][col] === 'string' && rows[row][col].includes('/')) {
+                    dateObj = new Date(rows[row][col]);
+                    // Check for 1899 dates
+                    if (dateObj.getFullYear() === 1899) {
+                        rows[row][col] = '';
+                        return;
+                    }
+                } else if (typeof rows[row][col] === 'number') {
+                    dateObj = excelDateToJS(rows[row][col]);
+                } else {
+                    dateObj = new Date(rows[row][col]);
+                }
+                
                 rows[row][col] = formatDateForSheets(dateObj);
             }
         });
 
-        // Sort rows by Invoice Date (column F, index 5) - latest first
+        // Sort rows by Invoice Date (column F, index 5) with custom sorting logic
         const headerRows = rows.slice(0, 2);
         const dataRows = rows.slice(2);
         
         dataRows.sort((a, b) => {
-            const dateA = new Date(a[5] || '1900-01-01');
-            const dateB = new Date(b[5] || '1900-01-01');
-            return dateB - dateA; // Descending order (latest first)
+            const dateA = a[5] || '';
+            const dateB = b[5] || '';
+            
+            // Handle empty dates (null/uncompleted orders should be at top)
+            if (!dateA && !dateB) return 0;
+            if (!dateA) return -1; // Empty dates go to top
+            if (!dateB) return 1;
+            
+            // Compare actual dates (latest first)
+            const parsedDateA = new Date(dateA);
+            const parsedDateB = new Date(dateB);
+            return parsedDateB - parsedDateA; // Descending order (latest first)
         });
 
         // Reconstruct rows array
