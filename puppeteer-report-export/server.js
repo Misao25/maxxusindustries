@@ -1,4 +1,4 @@
-// server.js (skip rows with 'Date TypeCreate' in column A)
+// server.js (raw data version - no formatting applied)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -97,79 +97,40 @@ app.get('/generate-report', async (req, res) => {
             });
         });
 
-        // Parse XLSX
-        const workbook = xlsx.read(buffer, { type: 'buffer' });
+        // Parse XLSX with raw values (no formatting)
+        const workbook = xlsx.read(buffer, { 
+            type: 'buffer',
+            raw: true,        // Keep raw values
+            cellDates: false, // Don't convert to JavaScript dates
+            cellNF: false,    // Don't apply number formatting
+            cellStyles: false // Don't read cell styles
+        });
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-        let rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
-
-        const excelDateToJS = serial => {
-            if (!serial || isNaN(serial)) return '';
-            const utc_days = Math.floor(serial - 25569);
-            const utc_value = utc_days * 86400; 
-            const date_info = new Date(utc_value * 1000);
-            const fractionalDay = serial % 1;
-            const totalSeconds = Math.round(86400 * fractionalDay);
-            date_info.setSeconds(totalSeconds);
-            return date_info.toLocaleString('en-US', {
-                year: 'numeric', month: 'numeric', day: 'numeric',
-                hour: 'numeric', minute: 'numeric', second: 'numeric',
-                hour12: true
-            });
-        };
-
-        // Format specified date columns & cells
-        const dateCols = [5, 6, 41];
-        const fixedDateCells = [{ row: 0, col: 23 }, { row: 1449, col: 23 }];
-
-        rows = rows.map((row, index) => {
-            if (index >= 2) {
-                dateCols.forEach(i => {
-                    if (row[i]) row[i] = excelDateToJS(row[i]);
-                });
-
-                // Clean line breaks in Order Notes
-                if (row[36]) {
-                    row[36] = row[36].toString().replace(/[\r\n]+/g, ' ').trim();
-                }
-            }
-            return row;
+        let rows = xlsx.utils.sheet_to_json(firstSheet, { 
+            header: 1,
+            raw: true,        // Preserve raw values
+            defval: ''        // Default value for empty cells
         });
 
-        const formatDate = (dateObj) => {
-            return dateObj.toLocaleString('en-US', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: true
-            });
-        };
-        // Sort rows by date in column F (index 5), latest first
-        rows = [rows[0], rows[1], ...rows.slice(2)
-            .map(row => {
-                row[5] = new Date(row[5]); // Parse to Date
-                return row;
-            })
-            .sort((a, b) => b[5] - a[5]) // Descending
-            .map(row => {
-                row[5] = formatDate(row[5]); // Format back to string
-                return row;
-            })
-        ];
-
-        // Format fixed cells separately
-        fixedDateCells.forEach(({ row, col }) => {
-            if (rows[row] && rows[row][col]) {
-                rows[row][col] = excelDateToJS(rows[row][col]);
-            }
+        // Sort rows by column F (index 5) value as-is, no date conversion
+        // Only sort data rows (skip headers)
+        const headerRows = rows.slice(0, 2);
+        const dataRows = rows.slice(2);
+        
+        // Sort by column F values in descending order (assuming numeric/serial dates)
+        dataRows.sort((a, b) => {
+            const valA = a[5] || 0;
+            const valB = b[5] || 0;
+            return valB - valA; // Descending order
         });
 
-        // Fetch existing Ecomdash IDs from column A
+        // Reconstruct rows array
+        rows = [...headerRows, ...dataRows];
+
+        // Fetch existing Ecomdash IDs from column A (SalesMasterfile sheet)
         const existingData = await sheets.spreadsheets.values.get({
             spreadsheetId: SHEET_ID,
-            range: 'SalesData!A:A',
+            range: 'SalesMasterfile!A:A',
         });
         const existingIDs = new Set((existingData.data.values || []).flat().map(id => id?.toString().trim()));
 
@@ -184,19 +145,19 @@ app.get('/generate-report', async (req, res) => {
             newRows.unshift(rows[0], rows[1]); // include headers
         }
 
-        // Append new rows
+        // Append new rows to SalesMasterfile with USER_ENTERED to prevent auto-formatting
         if (newRows.length > 0) {
             await sheets.spreadsheets.values.append({
                 spreadsheetId: SHEET_ID,
-                range: 'SalesData!A1',
-                valueInputOption: 'RAW',
+                range: 'SalesMasterfile!A1',
+                valueInputOption: 'RAW', // Use RAW to prevent Google Sheets formatting
                 insertDataOption: 'INSERT_ROWS',
                 requestBody: { values: newRows },
             });
         }
 
         await browser.close();
-        res.send(`✅ Added ${newRows.length - (existingData.data.values?.length === 0 ? 2 : 0)} new rows to SalesData`);
+        res.send(`✅ Added ${newRows.length - (existingData.data.values?.length === 0 ? 2 : 0)} new rows to SalesMasterfile`);
     }
     catch (err) {
         console.error(err);
