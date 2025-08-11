@@ -1,4 +1,4 @@
-// sales.js (initial deploy)
+// server.js (ignore SKU # duplicates)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -131,17 +131,10 @@ app.get('/generate-sales', async (req, res) => {
         rows = [...headerRows, ...dataRows];
 
 
-        // Fetch existing Ecomdash IDs from column A (SalesMasterfile sheet)
-        const existingData = await sheets.spreadsheets.values.get({
-            spreadsheetId: SHEET_ID,
-            range: 'SalesData!A:A',
-        });
-        const existingIDs = new Set((existingData.data.values || []).flat().map(id => id?.toString().trim()));
-
-        // Prepare rows to append (skip rows with 'Date TypeCreate' in column A)
+        // Skip only the "Date TypeCreate" rows, but do NOT check for duplicates
         const newRows = rows.slice(2).filter(row => {
             const id = row[0]?.toString().trim();
-            return id && id !== 'Date TypeCreate' && !existingIDs.has(id);
+            return id && id !== 'Date TypeCreate';
         });
 
         // Add header if sheet is empty
