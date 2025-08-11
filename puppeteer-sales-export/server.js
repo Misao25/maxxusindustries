@@ -1,4 +1,4 @@
-// server.js (ignore SKU # duplicates)
+// server.js (keep row logic)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -131,7 +131,13 @@ app.get('/generate-sales', async (req, res) => {
         rows = [...headerRows, ...dataRows];
 
 
-        // Skip only the "Date TypeCreate" rows, but do NOT check for duplicates
+        // Fetch existing Ecomdash IDs from column A (SalesMasterfile sheet)
+        const existingData = await sheets.spreadsheets.values.get({
+            spreadsheetId: SHEET_ID,
+            range: 'SalesData!A:A',
+        });
+
+        // Prepare rows to append (skip rows with 'Date TypeCreate' in column A)
         const newRows = rows.slice(2).filter(row => {
             const id = row[0]?.toString().trim();
             return id && id !== 'Date TypeCreate';
