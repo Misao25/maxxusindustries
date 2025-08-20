@@ -1,0 +1,12 @@
+{
+  "name": "orders-to-sheet",
+  "version": "1.0.0",
+  "description": "Send JSON orders to Google Sheets",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

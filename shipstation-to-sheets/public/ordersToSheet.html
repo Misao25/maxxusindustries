@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Orders to Google Sheets</title>
+</head>
+<body>
+  <h2>Send Orders to Google Sheets</h2>
+  <input type="file" id="jsonFile" accept=".json"><br><br>
+  <button id="sendBtn">Send JSON to Sheet</button>
+
+  <script>
+    const SHEET_URL = "PASTE_YOUR_EXEC_URL_HERE"; // 👈 Apps Script Web App URL
+
+    document.getElementById('sendBtn').addEventListener('click', () => {
+      const fileInput = document.getElementById('jsonFile');
+      const file = fileInput.files[0];
+      if (!file) return alert("Select a JSON file first");
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          let jsonData = JSON.parse(e.target.result);
+          if (!Array.isArray(jsonData)) jsonData = jsonData.orders;
+
+          // Flatten for Google Sheet (example)
+          const rows = jsonData.map(order => [
+            order.orderId,
+            order.orderNumber,
+            order.customerEmail,
+            order.orderTotal
+          ]);
+
+          fetch(SHEET_URL, {
+            method: "POST",
+            mode: "cors",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({sheetName: "Test", data: rows})
+          })
+          .then(res => res.text())
+          .then(txt => alert("Response: " + txt))
+          .catch(err => alert("Fetch error: " + err));
+        } catch (err) {
+          alert("Invalid JSON file: " + err);
+        }
+      };
+      reader.readAsText(file);
+    });
+  </script>
+</body>
+</html>
