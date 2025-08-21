@@ -6,43 +6,41 @@
 </head>
 <body>
   <h2>Send Orders to Google Sheets</h2>
-  <input type="file" id="jsonFile" accept=".json"><br><br>
-  <button id="sendBtn">Send JSON to Sheet</button>
+  <input type="file" id="jsonFile" accept=".json">
+  <button id="sendBtn">Send JSON</button>
 
   <script>
-    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyW5n1LQwZf3gpsL0-pfA0zuSAuUuDt9LdQtSYsfR9XsUC8WY64lm0GImL-rKQSBe8glw/exec";
-
-    document.getElementById('sendBtn').addEventListener('click', () => {
-      const fileInput = document.getElementById('jsonFile');
-      const file = fileInput.files[0];
-      if (!file) return alert("Select a JSON file first");
+    document.getElementById("sendBtn").addEventListener("click", () => {
+      const file = document.getElementById("jsonFile").files[0];
+      if (!file) return alert("Select a JSON file");
 
       const reader = new FileReader();
       reader.onload = function(e) {
+        let jsonData;
         try {
-          let jsonData = JSON.parse(e.target.result);
-          if (!Array.isArray(jsonData)) jsonData = jsonData.orders;
-
-          // Flatten for Google Sheet (example)
-          const rows = jsonData.map(order => [
-            order.orderId,
-            order.orderNumber,
-            order.customerEmail,
-            order.orderTotal
-          ]);
-
-          fetch(SHEET_URL, {
-            method: "POST",
-            mode: "cors",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({sheetName: "Test", data: rows})
-          })
-          .then(res => res.text())
-          .then(txt => alert("Response: " + txt))
-          .catch(err => alert("Fetch error: " + err));
-        } catch (err) {
-          alert("Invalid JSON file: " + err);
+          jsonData = JSON.parse(e.target.result);
+        } catch(err) {
+          return alert("Invalid JSON file: " + err);
         }
+
+        if (!Array.isArray(jsonData)) jsonData = jsonData.orders;
+
+        // Flatten rows
+        const rows = jsonData.map(order => [
+          order.orderId,
+          order.orderNumber,
+          order.customerEmail,
+          order.orderTotal
+        ]);
+
+        fetch("/append-orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: rows })
+        })
+        .then(res => res.text())
+        .then(txt => alert(txt))
+        .catch(err => alert("Error: " + err));
       };
       reader.readAsText(file);
     });
