@@ -52,11 +52,9 @@
 
                 jsonData.forEach(order => {
                     order.items.forEach(item => {
-                        const ecomdashOrderNumber = normalizeOrderNumber(order.orderNumber);
                         flattenedData.push({
                             orderId:   order.orderId,
                             orderNumber: order.orderNumber,
-                            ecomdashOrderNumber: ecomdashOrderNumber,
                             orderDate: order.orderDate,
                             orderItemId: item.orderItemId,
                             sku:       item.sku,
@@ -89,11 +87,6 @@
         };
         reader.readAsText(file);
     });
-
-    function normalizeOrderNumber(num) {
-        if (!num) return null;
-        return String(num).replace(/\D/g, '');
-    }
 
     function createTable(rows) {
         const table = document.getElementById('dataTable');
