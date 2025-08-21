@@ -4,7 +4,7 @@ import { google } from "googleapis";
 const app = express();
 
 // Middleware
-app.use(express.json());            // Parse JSON body
+app.use(express.json({ limit: "10mb" }));            // Parse JSON body
 app.use(express.static("public"));  // Serve index.html + assets from /public
 
 // Load Google service account from Railway ENV
