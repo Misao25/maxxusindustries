@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Push Order-Level Data to Google Sheets</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      font-size: 14px;
+    }
+    h2 {
+      color: #333;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 3px;
+      text-align: left;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    </style>
+</head>
+<body>
+  <h2>Select a JSON file of orders</h2>
+<input type="file" id="jsonFile" accept=".json"><br/><br/>
+
+<label>Target Sheet Name:</label>
+<input type="text" id="sheetName" value="Orders"><br/><br/>
+<button id="pushBtn">Push to Google Sheets</button>
+
+<table id="dataTable" border="1"></table>
+
+
+<script>
+  let flattenedData = [];
+
+  document.getElementById('jsonFile').addEventListener('change', function(evt) {
+    const file = evt.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        let jsonData = JSON.parse(e.target.result);
+        if (!Array.isArray(jsonData)) jsonData = jsonData.orders;
+
+        jsonData.forEach(order => {
+            order.items.forEach(item => {
+              flattenedData.push({
+                orderId:   order.orderId,
+                orderNumber: order.orderNumber,
+                orderKey: order.orderKey,
+                orderDate: order.orderDate,
+                orderItemId: item.orderItemId,
+                sku:       item.sku,
+                name:      item.name,
+                quantity:  item.quantity,
+                unitPrice: item.unitPrice,
+                orderTotal: order.orderTotal,
+                amountPaid: order.amountPaid,
+                shippingCost: order.shippingAmount,
+                taxAmount: order.taxAmount,
+                orderStatus: order.orderStatus,
+                customerId: order.customerId,
+                customerEmail: order.customerEmail,
+                warehouseId: order.advancedOptions.warehouseId,
+                storeId: order.advancedOptions.storeId,
+                carrierCode: order.carrierCode,
+                shipDate: order.shipDate,
+                shipCity: order.shipTo.city,
+                shipState: order.shipTo.state,
+                shipCountry: order.shipTo.country
+              });
+            });
+          });
+
+        createTable(flattenedData);
+      } catch (err) {
+        console.error(err);
+        alert('Invalid JSON file.');
+      }
+    };
+    reader.readAsText(file);
+  });
+  function createTable(rows) {
+    const table = document.getElementById('dataTable');
+    table.innerHTML = "";
+
+    const headerRow = document.createElement('tr');
+    const keys = Object.keys(rows[0]);
+    keys.forEach(key => {
+      const th = document.createElement('th');
+      th.textContent = key;
+      headerRow.appendChild(th);
+    });
+    table.appendChild(headerRow);
+
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      keys.forEach(key => {
+        const td = document.createElement('td');
+        td.textContent = r[key];
+        tr.appendChild(td);
+      });
+      table.appendChild(tr);
+    });
+  }
+  async function pushToSheets() {
+    if (!flattenedData.length) {
+      alert("No data loaded.");
+      return;
+    }
+    try {
+      const res = await fetch("/push-line-items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(flattenedData)
+      });
+      const result = await res.json();
+      alert(`Pushed ${result.inserted} rows to Google Sheets`);
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  }
+
+  document.getElementById("pushBtn").addEventListener("click", pushToSheets);
+</script>
+
+</body>
+</html>
