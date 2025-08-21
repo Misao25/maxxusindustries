@@ -56,7 +56,7 @@
                         flattenedData.push({
                             orderId:   order.orderId,
                             orderNumber: order.orderNumber,
-                            ecomdashOrderNumber: order.orderKey,
+                            ecomdashOrderNumber: order.ecomdashOrderNumber,
                             orderDate: order.orderDate,
                             orderItemId: item.orderItemId,
                             sku:       item.sku,
@@ -118,7 +118,7 @@
             table.appendChild(tr);
         });
     }
-    
+
     async function pushToSheets() {
         if (!flattenedData.length) {
             alert("No data loaded.");
