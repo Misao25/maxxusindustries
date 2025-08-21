@@ -1,12 +1,17 @@
 {
-  "name": "orders-to-sheet",
+  "name": "order-to-sheets",
   "version": "1.0.0",
-  "description": "Send JSON orders to Google Sheets",
+  "description": "Upload JSON orders, display in table, and push to Google Sheets",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "express": "^4.19.2",
+    "googleapis": "^141.0.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
