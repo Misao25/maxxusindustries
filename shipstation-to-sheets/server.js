@@ -19,10 +19,20 @@ const auth = new google.auth.GoogleAuth({
 // Spreadsheet ID (set in Railway variables)
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
-// API route: push rows into Google Sheets
-app.post("/push-to-sheets", async (req, res) => {
+// Push "orders summary"
+app.post("/push-orders", async (req, res) => {
+  await pushToGoogleSheets(req, res, "SS_Orders!A1");
+});
+
+// Push "line items"
+app.post("/push-line-items", async (req, res) => {
+  await pushToGoogleSheets(req, res, "SS_Items!A1");
+});
+
+// Helper function
+async function pushToGoogleSheets(req, res, range) {
   try {
-    const rows = req.body; // Expect array of flattened order rows
+    const rows = req.body;
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: "No rows provided" });
     }
@@ -30,23 +40,21 @@ app.post("/push-to-sheets", async (req, res) => {
     const client = await auth.getClient();
     const sheets = google.sheets({ version: "v4", auth: client });
 
-    // Convert objects → array of values
-    const values = rows.map(row => Object.values(row));
+    const values = rows.map(r => Object.values(r));
 
-    // Append rows
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Orders!A1",  // Change "Sheet1" if your tab name differs
+      range,
       valueInputOption: "RAW",
       requestBody: { values },
     });
 
     res.json({ success: true, inserted: rows.length });
   } catch (err) {
-    console.error("Error pushing to Sheets:", err);
     res.status(500).json({ error: err.message });
   }
-});
+}
+
 
 // Start server
 const PORT = process.env.PORT || 3000;
