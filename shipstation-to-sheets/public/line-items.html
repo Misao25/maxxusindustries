@@ -31,7 +31,7 @@
 <input type="file" id="jsonFile" accept=".json"><br/><br/>
 
 <label>Target Sheet Name:</label>
-<input type="text" id="sheetName" value="Orders"><br/><br/>
+<input type="text" id="sheetName" value="SS_Items"><br/><br/>
 <button id="pushBtn">Push to Google Sheets</button>
 
 <table id="dataTable" border="1"></table>
@@ -56,7 +56,7 @@
                         flattenedData.push({
                             orderId:   order.orderId,
                             orderNumber: order.orderNumber,
-                            ecomdashOrderNumber: order.ecomdashOrderNumber,
+                            ecomdashOrderNumber: ecomdashOrderNumber,
                             orderDate: order.orderDate,
                             orderItemId: item.orderItemId,
                             sku:       item.sku,
@@ -92,7 +92,7 @@
 
     function normalizeOrderNumber(num) {
         if (!num) return null;
-        return num.replace(/\D/g, '');
+        return String(num).replace(/\D/g, '');
     }
 
     function createTable(rows) {
