@@ -1,50 +1,55 @@
 import express from "express";
 import { google } from "googleapis";
-import path from "path";
 
 const app = express();
-app.use(express.json());
-app.use(express.static("public"));
 
-// load service account creds from env (Railway supports secrets)
+// Middleware
+app.use(express.json());            // Parse JSON body
+app.use(express.static("public"));  // Serve index.html + assets from /public
+
+// Load Google service account from Railway ENV
 const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
 
-// authenticate
+// Google auth
 const auth = new google.auth.GoogleAuth({
   credentials: serviceAccount,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
-// spreadsheet ID
+// Spreadsheet ID (set in Railway variables)
 const SPREADSHEET_ID = process.env.SPREADSHEET_ID;
 
-// endpoint to receive JSON rows
+// API route: push rows into Google Sheets
 app.post("/push-to-sheets", async (req, res) => {
   try {
-    const rows = req.body; // array of flattened rows
+    const rows = req.body; // Expect array of flattened order rows
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: "No rows provided" });
+    }
 
     const client = await auth.getClient();
     const sheets = google.sheets({ version: "v4", auth: client });
 
-    // format rows as 2D array
+    // Convert objects → array of values
     const values = rows.map(row => Object.values(row));
 
-    // append to sheet
+    // Append rows
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: "Sheet1!A1", // adjust your sheet name
+      range: "Orders!A1",  // Change "Sheet1" if your tab name differs
       valueInputOption: "RAW",
-      requestBody: {
-        values,
-      },
+      requestBody: { values },
     });
 
     res.json({ success: true, inserted: rows.length });
   } catch (err) {
-    console.error(err);
+    console.error("Error pushing to Sheets:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ Server running on http://localhost:${PORT}`);
+});

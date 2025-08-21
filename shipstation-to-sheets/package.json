@@ -8,8 +8,11 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "googleapis": "^141.0.0"
+    "express": "^5.1.0",
+    "googleapis": "^150.0.1",
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5"
   },
   "engines": {
     "node": ">=18"
