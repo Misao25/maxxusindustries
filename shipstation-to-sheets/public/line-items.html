@@ -51,33 +51,44 @@
                 if (!Array.isArray(jsonData)) jsonData = jsonData.orders;
 
                 jsonData.forEach(order => {
-                    order.items.forEach(item => {
-                        flattenedData.push({
-                            orderId:   order.orderId,
-                            orderNumber: order.orderNumber,
-                            orderDate: order.orderDate,
-                            orderItemId: item.orderItemId,
-                            sku:       item.sku,
-                            name:      item.name,
-                            quantity:  item.quantity,
-                            unitPrice: item.unitPrice,
-                            orderTotal: order.orderTotal,
-                            amountPaid: order.amountPaid,
-                            shippingCost: order.shippingAmount,
-                            taxAmount: order.taxAmount,
-                            orderStatus: order.orderStatus,
-                            customerId: order.customerId,
-                            customerEmail: order.customerEmail,
-                            warehouseId: order.advancedOptions.warehouseId,
-                            storeId: order.advancedOptions.storeId,
-                            carrierCode: order.carrierCode,
-                            shipDate: order.shipDate,
-                            shipCity: order.shipTo.city,
-                            shipState: order.shipTo.state,
-                            shipCountry: order.shipTo.country
-                        });
+                const date = new Date(order.orderDate);
+
+                const formattedDate = `${date.getFullYear()}/` +
+                                    `${String(date.getMonth() + 1).padStart(2, '0')}/` +
+                                    `${String(date.getDate()).padStart(2, '0')} ` +
+                                    `${String((date.getHours() % 12) || 12).padStart(2, '0')}:` +
+                                    `${String(date.getMinutes()).padStart(2, '0')}:` +
+                                    `${String(date.getSeconds()).padStart(2, '0')} ` +
+                                    `${date.getHours() >= 12 ? 'PM' : 'AM'}`;
+
+                order.items.forEach(item => {
+                    flattenedData.push({
+                        orderId: order.orderId,
+                        orderNumber: order.orderNumber,
+                        orderDate: formattedDate,
+                        orderItemId: item.orderItemId,
+                        sku: item.sku,
+                        name: item.name,
+                        quantity: item.quantity,
+                        unitPrice: item.unitPrice,
+                        orderTotal: order.orderTotal,
+                        amountPaid: order.amountPaid,
+                        shippingCost: order.shippingAmount,
+                        taxAmount: order.taxAmount,
+                        orderStatus: order.orderStatus,
+                        customerId: order.customerId,
+                        customerEmail: order.customerEmail,
+                        warehouseId: order.advancedOptions.warehouseId,
+                        storeId: order.advancedOptions.storeId,
+                        carrierCode: order.carrierCode,
+                        shipDate: order.shipDate,
+                        shipCity: order.shipTo.city,
+                        shipState: order.shipTo.state,
+                        shipCountry: order.shipTo.country
                     });
                 });
+            });
+
 
                 createTable(flattenedData);
             } catch (err) {

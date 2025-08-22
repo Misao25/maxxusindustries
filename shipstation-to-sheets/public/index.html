@@ -50,11 +50,21 @@
         let jsonData = JSON.parse(e.target.result);
         if (!Array.isArray(jsonData)) jsonData = jsonData.orders;
 
-        flattenedData = jsonData.map(order => ({
+        flattenedData = jsonData.map(order => {
+          const date = new Date(order.orderDate);
+
+          const formattedDate = `${date.getFullYear()}/` +
+                                `${String(date.getMonth() + 1).padStart(2, '0')}/` +
+                                `${String(date.getDate()).padStart(2, '0')} ` +
+                                `${String((date.getHours() % 12) || 12).padStart(2, '0')}:` +
+                                `${String(date.getMinutes()).padStart(2, '0')}:` +
+                                `${String(date.getSeconds()).padStart(2, '0')} ` +
+                                `${date.getHours() >= 12 ? 'PM' : 'AM'}`;
+
+        return {
           orderId: order.orderId,
           orderNumber: order.orderNumber,
-          orderKey: order.orderKey,
-          orderDate: order.orderDate,
+          orderDate: formattedDate,
           itemsCount: order.items.length,
           orderTotal: order.orderTotal,
           amountPaid: order.amountPaid,
@@ -70,7 +80,8 @@
           shipCity: order.shipTo.city,
           shipState: order.shipTo.state,
           shipCountry: order.shipTo.country
-        }));
+        };
+      });
 
         createTable(flattenedData);
       } catch (err) {
