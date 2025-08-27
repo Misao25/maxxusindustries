@@ -1,12 +1,10 @@
-// server.js (formatted data version - optimized for Google Sheets usability)
+// server.js (store dates as serials for Google Sheets)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
 const https = require('https');
 const xlsx = require('xlsx');
 const { google } = require('googleapis');
-const fs = require('fs');
-const stream = require('stream');
 require('dotenv').config();
 
 const app = express();
@@ -22,6 +20,15 @@ const sheets = google.sheets({ version: 'v4', auth });
 
 const SHEET_ID = '1mrw-AMbVWnz1Cp4ksjR0W0eTDz0cUiA-zjThrzcIRnY';
 
+// Convert JS Date back to Excel serial
+const jsDateToExcelSerial = (dateObj) => {
+    if (!dateObj || isNaN(dateObj)) return '';
+    const epoch = Date.UTC(1899, 11, 30); // 1899-12-30 UTC
+    let serial = (dateObj.getTime() - epoch) / (86400 * 1000);
+    if (serial >= 61) serial += 1; // Excel leap year bug
+    return serial;
+};
+
 app.get('/generate-report', async (req, res) => {
     const { from, to } = req.query;
     if (!from || !to) return res.status(400).send('Missing from or to date');
@@ -31,6 +38,7 @@ app.get('/generate-report', async (req, res) => {
     await page.setViewport({ width: 1280, height: 800 });
 
     try {
+        // --- login and navigate ---
         await page.goto('https://app.ecomdash.com/?returnUrl=%2fReporting');
         await page.type('input#UserName', process.env.LOGIN_EMAIL);
         await page.click('input#submit');
@@ -74,11 +82,11 @@ app.get('/generate-report', async (req, res) => {
                 const status = await row.$eval('td:nth-child(4)', el => el.textContent.trim());
 
                 if (rowTimestamp === timestampStr && status === 'Complete') {
-                const linkEl = await row.$('td:nth-child(5) a[href$=".xlsx"]');
-                if (linkEl) {
-                    downloadUrl = await linkEl.evaluate(a => a.href);
-                    break;
-                }
+                    const linkEl = await row.$('td:nth-child(5) a[href$=".xlsx"]');
+                    if (linkEl) {
+                        downloadUrl = await linkEl.evaluate(a => a.href);
+                        break;
+                    }
                 }
             }
             if (downloadUrl) break;
@@ -102,91 +110,34 @@ app.get('/generate-report', async (req, res) => {
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         let rows = xlsx.utils.sheet_to_json(firstSheet, { header: 1 });
 
-        // Convert Excel serial dates to proper date format
-        const excelDateToJS = serial => {
-            if (!serial || isNaN(serial) || serial === 0 || serial < 1) return null;
-            
-            // Handle Excel's 1900 date system bug (treats 1900 as leap year)
-            let adjustedSerial = serial;
-            if (serial >= 61) {
-                adjustedSerial = serial - 1;
-            }
-            
-            const utc_days = Math.floor(adjustedSerial - 25569);
-            const utc_value = utc_days * 86400; 
-            const date_info = new Date(utc_value * 1000);
-            const fractionalDay = adjustedSerial % 1;
-            const totalSeconds = Math.round(86400 * fractionalDay);
-            date_info.setSeconds(totalSeconds);
-            
-            // Validate the resulting date (should be after 1900-01-01)
-            if (date_info.getFullYear() < 1900) return null;
-            
-            return date_info;
-        };
-
-        // Format date for Google Sheets (YYYY/MM/DD HH:MM:SS AM/PM format)
-        const formatDateForSheets = (dateObj) => {
-            if (!dateObj || !(dateObj instanceof Date) || isNaN(dateObj)) return '';
-            
-            // Additional validation: reject dates before 1900 (likely Excel artifacts)
-            if (dateObj.getFullYear() < 1900) return '';
-            
-            const year = dateObj.getFullYear();
-            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const day = String(dateObj.getDate()).padStart(2, '0');
-            
-            // Format time with AM/PM
-            let hours = dateObj.getHours();
-            const minutes = String(dateObj.getMinutes()).padStart(2, '0');
-            const seconds = String(dateObj.getSeconds()).padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            
-            // Convert to 12-hour format
-            hours = hours % 12;
-            hours = hours ? hours : 12; // 0 should be 12
-            const formattedHours = String(hours).padStart(2, '0');
-            
-            return `${year}/${month}/${day} ${formattedHours}:${minutes}:${seconds} ${ampm}`;
-        };
-
-        // Process and format data
+        // Columns with dates to convert to serials
         const dateCols = [5, 6, 41]; // Invoice Date, Payment Received Date, Completed Date
         const fixedDateCells = [{ row: 0, col: 23 }, { row: 1449, col: 23 }];
 
         rows = rows.map((row, index) => {
-            if (index >= 2) { // Skip header rows
-                // Format date columns
+            if (index >= 2) {
                 dateCols.forEach(colIndex => {
-                    if (row[colIndex] !== undefined && row[colIndex] !== null && row[colIndex] !== '') {
-                        // Check if it's already a formatted date string or an Excel serial number
+                    if (row[colIndex]) {
                         let dateObj;
-                        
                         if (typeof row[colIndex] === 'string' && row[colIndex].includes('/')) {
-                            // Already formatted date string - parse it
                             dateObj = new Date(row[colIndex]);
-                            
-                            // Check if it's the problematic 1899 date
-                            if (dateObj.getFullYear() === 1899) {
-                                row[colIndex] = ''; // Set to empty for null dates
-                                return;
-                            }
                         } else if (typeof row[colIndex] === 'number') {
-                            // Excel serial number
-                            dateObj = excelDateToJS(row[colIndex]);
+                            // already a serial, keep it
+                            return;
                         } else {
-                            // Try to parse as date
                             dateObj = new Date(row[colIndex]);
                         }
-                        
-                        // Format the date
-                        row[colIndex] = formatDateForSheets(dateObj);
+                        if (dateObj && !isNaN(dateObj)) {
+                            row[colIndex] = jsDateToExcelSerial(dateObj);
+                        } else {
+                            row[colIndex] = '';
+                        }
                     } else {
-                        row[colIndex] = ''; // Ensure empty cells are empty strings
+                        row[colIndex] = '';
                     }
                 });
 
-                // Clean Order Notes (remove line breaks)
+                // Clean Order Notes
                 if (row[36]) {
                     row[36] = row[36].toString().replace(/[\r\n]+/g, ' ').trim();
                 }
@@ -194,74 +145,54 @@ app.get('/generate-report', async (req, res) => {
             return row;
         });
 
-        // Format fixed date cells separately
+        // Format fixed date cells
         fixedDateCells.forEach(({ row, col }) => {
             if (rows[row] && rows[row][col]) {
-                let dateObj;
-                
-                if (typeof rows[row][col] === 'string' && rows[row][col].includes('/')) {
-                    dateObj = new Date(rows[row][col]);
-                    // Check for 1899 dates
-                    if (dateObj.getFullYear() === 1899) {
-                        rows[row][col] = '';
-                        return;
-                    }
-                } else if (typeof rows[row][col] === 'number') {
-                    dateObj = excelDateToJS(rows[row][col]);
+                let dateObj = new Date(rows[row][col]);
+                if (!isNaN(dateObj)) {
+                    rows[row][col] = jsDateToExcelSerial(dateObj);
                 } else {
-                    dateObj = new Date(rows[row][col]);
+                    rows[row][col] = '';
                 }
-                
-                rows[row][col] = formatDateForSheets(dateObj);
             }
         });
 
-        // Sort rows by Invoice Date (column F, index 5) with custom sorting logic
+        // Sort rows by Invoice Date (serial value)
         const headerRows = rows.slice(0, 2);
         const dataRows = rows.slice(2);
-        
+
         dataRows.sort((a, b) => {
-            const dateA = a[5] || '';
-            const dateB = b[5] || '';
-            
-            // Handle empty dates (null/uncompleted orders should be at top)
-            if (!dateA && !dateB) return 0;
-            if (!dateA) return -1; // Empty dates go to top
-            if (!dateB) return 1;
-            
-            // Compare actual dates (latest first)
-            const parsedDateA = new Date(dateA);
-            const parsedDateB = new Date(dateB);
-            return parsedDateB - parsedDateA; // Descending order (latest first)
+            const dateA = a[5] || 0;
+            const dateB = b[5] || 0;
+            return dateB - dateA; // Descending
         });
 
-        // Reconstruct rows array
         rows = [...headerRows, ...dataRows];
 
-        // Fetch existing Ecomdash IDs from column A (SalesMasterfile sheet)
+        // Fetch existing IDs
         const existingData = await sheets.spreadsheets.values.get({
             spreadsheetId: SHEET_ID,
             range: 'SalesMasterfile!A:A',
         });
         const existingIDs = new Set((existingData.data.values || []).flat().map(id => id?.toString().trim()));
 
-        // Prepare rows to append (skip rows with 'Date TypeCreate' in column A)
+        // Prepare new rows
         const newRows = rows.slice(2).filter(row => {
             const id = row[0]?.toString().trim();
             return id && id !== 'Date TypeCreate' && !existingIDs.has(id);
         });
 
-        // Add header if sheet is empty
+        // Add headers if sheet is empty
         if ((existingData.data.values || []).length === 0) {
-            newRows.unshift(rows[0], rows[1]); // include headers
+            newRows.unshift(rows[0], rows[1]);
         }
 
-        // Append new rows to SalesMasterfile
+        // Append to Google Sheets
         if (newRows.length > 0) {
             await sheets.spreadsheets.values.append({
                 spreadsheetId: SHEET_ID,
                 range: 'SalesMasterfile!A1',
-                valueInputOption: 'USER_ENTERED', // Allows Google Sheets to recognize date formats
+                valueInputOption: 'USER_ENTERED', // ✅ Sheets will auto-interpret serials as dates
                 insertDataOption: 'INSERT_ROWS',
                 requestBody: { values: newRows },
             });
