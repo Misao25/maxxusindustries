@@ -66,6 +66,7 @@
           orderNumber: order.orderNumber,
           orderDate: formattedDate,
           itemsCount: order.items.length,
+          itemsQuantity: order.items.reduce((sum, item) => sum + (item.quantity || 0), 0),
           orderTotal: order.orderTotal,
           amountPaid: order.amountPaid,
           shippingCost: order.shippingAmount,
