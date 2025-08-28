@@ -50,7 +50,7 @@
         let jsonData = JSON.parse(e.target.result);
         if (!Array.isArray(jsonData)) jsonData = jsonData.orders;
 
-        flattenedData = jsonData.map(order => {
+        flattenedData = jsonData.filter(order => order.orderStatus?.toLowerCase() === "shipped").map(order => {
           const date = new Date(order.orderDate);
 
           const formattedDate = `${date.getFullYear()}/` +
