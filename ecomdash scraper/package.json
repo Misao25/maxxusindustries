@@ -1,0 +1,18 @@
+{
+  "name": "ecomdash-scraper",
+  "version": "1.0.0",
+  "description": "EcomDash order scraper",
+  "main": "scraper.js",
+  "scripts": {
+    "start": "node scraper.js",
+    "dev": "node scraper.js"
+  },
+  "dependencies": {
+    "dayjs": "^1.11.18",
+    "dotenv": "^17.2.1",
+    "express": "^5.1.0",
+    "googleapis": "^154.1.0",
+    "puppeteer": "^24.15.0",
+    "xlsx": "^0.18.5"
+  }
+}

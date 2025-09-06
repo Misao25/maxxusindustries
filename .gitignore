@@ -1,1 +1,4 @@
 puppeteer-report-export/excel formulas.js
+ecomdash scraper/.env
+ecomdash scraper/scraper.js
+ecomdash scraper/sync-orders-columns.js
