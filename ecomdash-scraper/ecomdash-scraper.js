@@ -98,7 +98,7 @@ async function processBatch(orderIds, batchIndex, totalBatches) {
 
     for (const orderId of orderIds) {
         if (existingOrderIds.has(orderId)) {
-            console.log(`⏭️ Skipping ${orderId}, already in Orders tab`);
+            // console.log(`⏭️ Skipping ${orderId}, already in Orders tab`);
             continue;
         }
 
