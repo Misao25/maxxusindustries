@@ -19,7 +19,7 @@ const MASTERFILE_ID = '1mrw-AMbVWnz1Cp4ksjR0W0eTDz0cUiA-zjThrzcIRnY';
 const DESTINATION_ID = '1CNrLur_7RQkznmoNLZypFflY2gRmgHLg0vMJqdGm3_c';
 
 // ✅ Batch size (restart browser every 100 orders)
-const BATCH_SIZE = 5000;
+const BATCH_SIZE = 100;
 
 // --- Helpers ---
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -92,7 +92,11 @@ async function processBatch(orderIds, batchIndex, totalBatches) {
     await page.waitForSelector('input#Password');
     await page.type('input#Password', process.env.LOGIN_PASS);
     await page.click('input#submit');
-    await page.waitForNavigation({ waitUntil: 'networkidle2' });
+    // globally increase default timeout
+    page.setDefaultNavigationTimeout(120000); // 2 minutes
+
+    // or per goto
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
 
     const existingOrderIds = await getExistingOrderIds();
 
