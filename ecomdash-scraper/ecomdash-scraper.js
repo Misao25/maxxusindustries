@@ -89,14 +89,10 @@ async function processBatch(orderIds, batchIndex, totalBatches) {
     await page.goto('https://app.ecomdash.com/?returnUrl=%2fSalesOrderModule%2fAllSalesOrders');
     await page.type('input#UserName', process.env.LOGIN_EMAIL);
     await page.click('input#submit');
-    await page.waitForSelector('input#Password');
+    await page.waitForSelector('input#Password', { timeout: 10000 });
     await page.type('input#Password', process.env.LOGIN_PASS);
     await page.click('input#submit');
-    // globally increase default timeout
-    page.setDefaultNavigationTimeout(120000); // 2 minutes
-
-    // or per goto
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
+    await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
     const existingOrderIds = await getExistingOrderIds();
 
