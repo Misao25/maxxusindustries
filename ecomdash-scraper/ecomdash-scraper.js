@@ -219,7 +219,7 @@ async function processBatch(orderIds, batchIndex, totalBatches) {
         if (expander) {
           try {
             await expander.click();
-            await page.waitForTimeout(1000);
+            await new Promise(r => setTimeout(r, 1000));
             const kitRows = await row.evaluate((el) => {
               const sib = el.nextElementSibling;
               if (!sib) return [];
