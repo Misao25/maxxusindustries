@@ -209,7 +209,7 @@ async function processBatch(orderIds, batchIndex, totalBatches, results) {
                 .catch(() => '')) || '';
           }
 
-          return { name, sku, qty, price, kits: [] };
+          return { name, sku, qty, price };
         })();
 
         products.push(product);
@@ -261,12 +261,17 @@ async function processBatch(orderIds, batchIndex, totalBatches, results) {
   console.log(`✅ Finished batch ${batchIndex + 1} of ${totalBatches}`);
 }
 
-// --- Main Runner (exported) ---
+// --- Main Runner (exported only) ---
 async function runScraper() {
   const orderIds = await readOrderIds();
   const orderChunks = chunkArray(orderIds, BATCH_SIZE);
 
-  const results = { processed: orderIds.length, batches: orderChunks.length, successes: [], failures: [] };
+  const results = {
+    processed: orderIds.length,
+    batches: orderChunks.length,
+    successes: [],
+    failures: [],
+  };
 
   for (let i = 0; i < orderChunks.length; i++) {
     await processBatch(orderChunks[i], i, orderChunks.length, results);
@@ -278,16 +283,3 @@ async function runScraper() {
 }
 
 module.exports = runScraper;
-
-// Allow running directly
-if (require.main === module) {
-  runScraper()
-    .then((res) => {
-      console.log('✅ Summary:', res);
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error('❌ Fatal error:', err);
-      process.exit(1);
-    });
-}
