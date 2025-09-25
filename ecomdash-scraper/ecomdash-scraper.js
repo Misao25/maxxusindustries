@@ -97,7 +97,9 @@ async function processBatch(orderIds, batchIndex, totalBatches) {
   const existingOrderIds = await getExistingOrderIds();
 
   for (const orderId of orderIds) {
-    if (existingOrderIds.has(orderId)) continue;
+    if (existingOrderIds.has(orderId)) {
+      continue;
+    }
 
     const url = `https://dashboard.ecomdash.com/SalesOrderModule/SalesOrderDetails?ID=${orderId}&ReturnItem=AllSO`;
     console.log(`🔎 Visiting Order ID: ${orderId}`);
@@ -105,7 +107,7 @@ async function processBatch(orderIds, batchIndex, totalBatches) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-      // --- Extract order info (same as your code) ---
+      // --- Extract Order Info ---
       const orderInfo = await page.evaluate(() => {
         const rawOrderNumber =
           document.querySelector(".orderdetail-header__text")?.innerText || "";
@@ -164,13 +166,210 @@ async function processBatch(orderIds, batchIndex, totalBatches) {
 
       orderInfo.orderDate = formatDate(orderInfo.orderDate);
 
-      // --- extract products/kits & write to sheets (your existing code) ---
-      // (unchanged, kept as in your current version)
+      // --- Robust product + kit extraction (row-by-row using handles) ---
+      await page.waitForSelector("#SalesOrderProductList tbody tr", { timeout: 10000 });
 
-      // [cut for brevity]
-      // use your existing productsData, kitsData, writeToSheet calls here
+      const allRowHandles = await page.$$("#SalesOrderProductList tbody > tr");
 
+      const products = [];
+      let productIndex = 0;
+
+      for (let r = 0; r < allRowHandles.length; r++) {
+        const row = allRowHandles[r];
+
+        // Skip child rows (they contain .child-table)
+        const isChildRow = (await row.$(".child-table")) !== null;
+        if (isChildRow) continue;
+
+        // Extract product basics from the product row itself
+        const product = await (async () => {
+          const name =
+            (await row
+              .$eval("td:nth-child(2) b font", (el) => el.innerText.trim())
+              .catch(() => "")) || "";
+
+          const tdText =
+            (await row
+              .$eval("td:nth-child(2)", (el) => el.innerText)
+              .catch(() => "")) || "";
+          let sku = "";
+          const skuMatch = tdText.match(/SKU:\s*([A-Za-z0-9\-_]+)/);
+          if (skuMatch) sku = skuMatch[1].trim();
+
+          // Qty: hidden input preferred
+          const qty =
+            (await row
+              .$eval("td:nth-child(5) input[type=\"hidden\"]", (el) => el.value)
+              .catch(() => "")) || "";
+
+          // Price: hidden input first, then visible text input (awaiting shipments)
+          let price =
+            (await row
+              .$eval("td:nth-child(6) input[type=\"hidden\"]", (el) => el.value)
+              .catch(() => "")) || "";
+          if (!price) {
+            price =
+              (await row
+                .$eval("td:nth-child(6) input.order-price", (el) => el.value)
+                .catch(() => "")) || "";
+          }
+
+          return { name, sku, qty, price, kits: [] };
+        })();
+
+        // Per-product kit: click expander in THIS row, then read NEXT sibling row's .child-table
+        const expander = await row.$(".albany-expander");
+        if (expander) {
+          let kitRows = [];
+          try {
+            // Try clicking twice if needed
+            for (let attempt = 0; attempt < 2; attempt++) {
+              await expander.click();
+              try {
+                await page.waitForFunction(
+                  (el) =>
+                    el.nextElementSibling &&
+                    el.nextElementSibling.querySelector(".child-table"),
+                  { timeout: 5000 },
+                  row
+                );
+                // Child table found, extract and break retry loop
+                kitRows = await row.evaluate((el) => {
+                  const sib = el.nextElementSibling;
+                  if (!sib) return [];
+                  const table = sib.querySelector(".child-table");
+                  if (!table) return [];
+                  return Array.from(table.querySelectorAll("tbody tr"))
+                    .map((tr) =>
+                      Array.from(tr.querySelectorAll("td")).map((td) =>
+                        td.innerText.trim()
+                      )
+                    )
+                    .filter((cols) => cols.some((text) => text.length > 0)); // skip empty rows
+                });
+                break;
+              } catch {
+                if (attempt === 0) {
+                  console.log(`⚠️ First click didn't open child-table, retrying...`);
+                }
+              }
+            }
+
+            // Map if we got kit rows
+            if (kitRows.length > 0) {
+              product.kits = kitRows.map((k) => {
+                const [componentName, componentSku, componentQty, componentLocation] = k;
+                return { componentName, componentSku, componentQty, componentLocation };
+              });
+            }
+          } catch (e) {
+            console.log(`⚠️ Failed to expand product row: ${e.message}`);
+          }
+        }
+
+        products.push(product);
+        productIndex++;
+      }
+
+      // --- Get existing order rows so we know where new ones will land ---
+      const ordersRange = await sheets.spreadsheets.values.get({
+        spreadsheetId: DESTINATION_ID,
+        range: "Orders!A:A",
+      });
+      const existingOrderRows = ordersRange.data.values
+        ? ordersRange.data.values.length
+        : 0;
+      const rowIndex = existingOrderRows + 1;
+
+      // --- Flatten Data ---
+      const ordersData = [
+        [
+          orderId,
+          orderInfo.orderNumber,
+          orderInfo.orderDate,
+          orderInfo.status,
+          orderInfo.storefront,
+          orderInfo.financials.merchandiseTotal,
+          orderInfo.financials.tax1,
+          orderInfo.financials.tax2,
+          orderInfo.financials.tax3,
+          orderInfo.financials.shipping,
+          orderInfo.financials.discount,
+          orderInfo.financials.otherFees,
+          orderInfo.financials.orderTotal,
+          `=SUMIFS(Products!I:I, Products!A:A, A${rowIndex})`,
+        ],
+      ];
+
+      const productsData = [];
+      const kitsData = [];
+
+      // --- Get existing product rows so we know where new ones will land ---
+      const productsRange = await sheets.spreadsheets.values.get({
+        spreadsheetId: DESTINATION_ID,
+        range: "Products!A:A",
+      });
+      const existingProductRows = productsRange.data.values
+        ? productsRange.data.values.length
+        : 0;
+
+      // --- Build Products + Product_Items rows ---
+      products.forEach((p, i) => {
+        const rowIndex = existingProductRows + productsData.length + 1; // next row index in Products
+
+        // --- Products tab ---
+        productsData.push([
+          orderId,
+          i + 1,
+          p.name,
+          p.sku,
+          p.qty,
+          p.price,
+          orderInfo.orderDate,
+          orderInfo.storefront,
+          `=SUMIFS(Product_Items!L:L, Product_Items!A:A, A${rowIndex}, Product_Items!B:B, B${rowIndex})`, // formula for cost
+        ]);
+
+        // --- Product_Items tab ---
+        if (p.kits.length > 0) {
+          p.kits.forEach((kit, j) => {
+            kitsData.push([
+              orderId,
+              i + 1,
+              j + 1,
+              kit.componentSku || "",
+              kit.componentName || "",
+              kit.componentQty || "",
+              kit.componentLocation || "",
+              orderInfo.orderDate,
+              orderInfo.storefront,
+            ]);
+          });
+        } else {
+          // Standalone product → add as single itemized row for inventory accuracy
+          kitsData.push([
+            orderId,
+            i + 1,
+            1,
+            p.sku,
+            p.name,
+            p.qty,
+            "",
+            orderInfo.orderDate,
+            orderInfo.storefront,
+          ]);
+        }
+      });
+
+      // --- Push to Google Sheets ---
+      console.log(`📝 Writing order ${orderId} with ${productsData.length} products and ${kitsData.length} kit items`);
+      await writeToSheet("Orders", ordersData);
+      await writeToSheet("Products", productsData);
+      await writeToSheet("Product_Items", kitsData);
+
+      // add to in-memory set so if same orderId appears later in this run, we skip
       existingOrderIds.add(orderId);
+
       console.log(`✅ Pushed Order ${orderId} to Google Sheets`);
     } catch (err) {
       console.error(`❌ Failed on Order ${orderId}:`, err.message);
