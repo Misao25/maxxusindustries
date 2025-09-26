@@ -1,4 +1,4 @@
-// server.js (compare rows for append/update logic)
+// server.js (Batch all updates into one request)
 
 const express = require('express');
 const puppeteer = require('puppeteer');
@@ -243,17 +243,20 @@ app.get('/generate-report', async (req, res) => {
       rowsToAppend.unshift(rows[0], rows[1]);
     }
 
-    // --- Update rows in place ---
-    for (const { rowIndex, values } of rowsToUpdate) {
-      await sheets.spreadsheets.values.update({
+    // --- Apply changes in bulk ---
+    if (rowsToUpdate.length > 0) {
+      await sheets.spreadsheets.values.batchUpdate({
         spreadsheetId: SHEET_ID,
-        range: `SalesMasterfile!A${rowIndex}:AZ${rowIndex}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [values] },
+        requestBody: {
+          valueInputOption: 'USER_ENTERED',
+          data: rowsToUpdate.map(({ rowIndex, values }) => ({
+            range: `SalesMasterfile!A${rowIndex}:AZ${rowIndex}`, // adjust AZ if more cols
+            values: [values],
+          })),
+        },
       });
     }
 
-    // --- Append new rows ---
     if (rowsToAppend.length > 0) {
       await sheets.spreadsheets.values.append({
         spreadsheetId: SHEET_ID,
@@ -266,12 +269,9 @@ app.get('/generate-report', async (req, res) => {
 
     await browser.close();
 
-    console.log(`✅ Added ${rowsToAppend.length} new rows`);
-    console.log(`✅ Updated ${rowsToUpdate.length} existing rows`);
-
-    res.send(
-      `✅ Added ${rowsToAppend.length} new rows, updated ${rowsToUpdate.length} rows in SalesMasterfile`
-    );
+    const summary = `✅ Added ${rowsToAppend.length} new rows, updated ${rowsToUpdate.length} rows in SalesMasterfile`;
+    console.log(summary);
+    res.send(summary);
   } catch (err) {
     console.error(err);
     await browser.close();
